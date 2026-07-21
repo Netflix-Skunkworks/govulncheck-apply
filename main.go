@@ -22,37 +22,96 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"os/exec"
+	"slices"
+	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 func main() {
-	dec := json.NewDecoder(os.Stdin)
-	seen := map[string]bool{}
+	fixes, err := parse(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := apply(fixes); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// parse reads a `govulncheck -json` stream and returns, per module, the version
+// to upgrade to. It fixes only called vulnerabilities — govulncheck traces those
+// to an invoked symbol, so trace[0] carries a Function — and skips the standard
+// library, whose fix is a go-directive bump, not a `go get`.
+func parse(r io.Reader) (map[string]string, error) {
+	dec := json.NewDecoder(r)
+	fixes := map[string]string{}
 	decoded := false
 	for {
 		var msg message
-		if err := dec.Decode(&msg); err == io.EOF {
-			break
-		} else if err != nil {
-			// A parse failure on the very first entry almost always means the
-			// input isn't the JSON stream at all (e.g. `-json` was forgotten,
-			// so this is govulncheck's plain-text output).
+		switch err := dec.Decode(&msg); err {
+		case nil:
+		case io.EOF:
+			return fixes, nil
+		default:
+			// A failure before anything decoded almost always means the input
+			// isn't the JSON stream at all (e.g. `-json` was forgotten).
 			if decoded {
-				fmt.Fprintln(os.Stderr, err)
-			} else {
-				fmt.Fprintln(os.Stderr, "input could not be parsed. did you pass govulncheck -json output to this program? the error was:", err)
+				return nil, err
 			}
-			os.Exit(1)
+			return nil, fmt.Errorf("input could not be parsed. did you pass `govulncheck -json` output to this program? the error was: %w", err)
 		}
 		decoded = true
 
 		f := msg.Finding
-		if f == nil || len(f.Trace) == 0 || seen[f.OSV] {
+		if f == nil || len(f.Trace) == 0 {
 			continue
 		}
-		seen[f.OSV] = true
-
-		mod := f.Trace[0]
-		fmt.Printf("Your code is affected by %s, found in %s@%s, fixed in %s@%s\n", f.OSV, mod.Module, mod.Version, mod.Module, f.FixedVersion)
+		vuln := f.Trace[0]
+		if vuln.Function == "" || vuln.Module == "stdlib" || f.FixedVersion == "" {
+			continue
+		}
+		// A module can have several called vulns with different fixes; the
+		// highest fix covers them all.
+		if semver.Compare(f.FixedVersion, fixes[vuln.Module]) > 0 {
+			fixes[vuln.Module] = f.FixedVersion
+		}
 	}
+}
+
+func apply(fixes map[string]string) error {
+	if len(fixes) == 0 {
+		return nil
+	}
+	var modules []string
+	for _, mod := range slices.Sorted(maps.Keys(fixes)) {
+		modules = append(modules, mod+"@"+fixes[mod])
+	}
+	if err := goGet(modules...); err != nil {
+		return err
+	}
+	return goModTidy()
+}
+
+// goGet upgrades every module@version spec in a single invocation, so the
+// module graph is resolved once.
+func goGet(modules ...string) error {
+	return run(exec.Command("go", append([]string{"get"}, modules...)...))
+}
+
+func goModTidy() error {
+	return run(exec.Command("go", "mod", "tidy"))
+}
+
+// run executes cmd, surfacing its output on stderr.
+func run(cmd *exec.Cmd) error {
+	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w", strings.Join(cmd.Args, " "), err)
+	}
+	return nil
 }
