@@ -27,12 +27,22 @@ func TestVulncheck(t *testing.T) {
 		t.Fatal("no testcases/*.txtar files found")
 	}
 
+	// Build the applier once and pipe each fixture's govulncheck output into
+	// it by absolute path, so the test doesn't depend on a prebuilt binary
+	// living at some fixed location.
+	applier := filepath.Join(t.TempDir(), "govulncheck-apply")
+	run(t, ".", "go", "build", "-o", applier, "github.com/netflix-skunkworks/govulncheck-apply")
+
 	for _, path := range cases {
 		name := strings.TrimSuffix(filepath.Base(path), ".txtar")
 		t.Run(name, func(t *testing.T) {
 			archive, err := txtar.ParseFile(path)
 			if err != nil {
 				t.Fatal(err)
+			}
+
+			if directives(archive.Comment)["skip"] == "true" {
+				t.Skip("disabled by 'skip: true' directive")
 			}
 
 			// Split want_diff.txt (the expected output) from the files that
@@ -53,7 +63,8 @@ func TestVulncheck(t *testing.T) {
 			}
 			gitInit(t, repo)
 
-			run(t, repo, "bash", "-c", script)
+			run(t, repo, "bash", "-c", "go get -tool golang.org/x/vuln/cmd/govulncheck@v1.6.0")
+			run(t, repo, "bash", "-c", "go tool govulncheck -json ./... | '"+applier+"'")
 
 			run(t, repo, "git", "add", "-A")
 			got := run(t, repo, "git", "-c", "core.pager=cat", "diff", "--cached")
@@ -63,6 +74,21 @@ func TestVulncheck(t *testing.T) {
 			}
 		})
 	}
+}
+
+// directives parses the leading "key: value" lines of a txtar archive comment
+// (e.g. description and skip). Parsing stops at the first blank or
+// non-directive line, so the free-form description prose below is ignored.
+func directives(comment []byte) map[string]string {
+	m := map[string]string{}
+	for line := range strings.SplitSeq(string(comment), "\n") {
+		key, val, ok := strings.Cut(line, ":")
+		if !ok || strings.ContainsAny(strings.TrimSpace(key), " \t") {
+			break
+		}
+		m[strings.TrimSpace(key)] = strings.TrimSpace(val)
+	}
+	return m
 }
 
 // take removes the named file from the archive and returns its contents.
