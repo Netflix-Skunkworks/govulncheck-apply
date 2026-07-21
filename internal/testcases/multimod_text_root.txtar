@@ -1,0 +1,62 @@
+A multi-module repo (two independent modules, no go.work) where only the ROOT
+module example.com/foo has a vulnerable golang.org/x/text dependency. The child
+module at sub/ (example.com/bar) is benign with no vulnerable deps.
+The vulncheck bot runs at the repo root; govulncheck ./... finds the root vuln
+and bumps x/text from v0.3.5 to the fixed v0.3.7. The sub/ module is left
+untouched. Expected: PASS.
+-- go.mod --
+module example.com/foo
+
+go 1.25.0
+
+require golang.org/x/text v0.3.5
+-- main.go --
+package main
+
+import (
+	"fmt"
+
+	"golang.org/x/text/language"
+)
+
+func main() {
+	// language.Parse is the vulnerable symbol (GO-2021-0113); printing its
+	// results directly keeps it on the call path so govulncheck flags it.
+	fmt.Println(language.Parse("en-US"))
+}
+-- go.sum --
+golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+-- sub/go.mod --
+module example.com/bar
+
+go 1.25.0
+-- sub/lib.go --
+package bar
+
+// Greeting returns a friendly message. This module has no vulnerable deps.
+func Greeting(name string) string {
+	return "hello, " + name
+}
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index 4fde206..c86cdab 100644
+--- a/go.mod
++++ b/go.mod
+@@ -2,4 +2,4 @@ module example.com/foo
+ 
+ go 1.25.0
+ 
+-require golang.org/x/text v0.3.5
++require golang.org/x/text v0.3.7
+diff --git a/go.sum b/go.sum
+index bbd33e8..1f78e03 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,3 +1,2 @@
+-golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+-golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+-golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
++golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
++golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=

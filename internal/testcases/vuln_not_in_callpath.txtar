@@ -1,0 +1,61 @@
+A Go module that requires a vulnerable golang.org/x/text v0.3.5 but never calls
+the vulnerable symbol (language.Parse). The package is only blank-imported, so
+govulncheck classifies the vuln as informational ("not called").
+
+Expected: FAIL.
+
+Gap: dependabot-style tools upgrade any vulnerable dependency regardless of
+whether it is on a call path, so the desired remediation (want_diff.txt) is the
+bump to v0.3.7. But the bot script relies on govulncheck's per-vulnerability
+"Fixed in:" lines, which the default output only emits for CALLED vulns. For
+not-called vulns govulncheck prints only an aggregate summary sentence ("This
+scan also found N vulnerabilities in modules you require ... but your code
+doesn't appear to call these"), with no "Fixed in: <mod>@<ver>" line. The awk
+filter `/Fixed in:/ && /@/` therefore matches nothing, the `sh` pipeline is a
+no-op, `go mod tidy` changes nothing, and the resulting diff is empty rather
+than the wanted upgrade.
+-- main.go --
+package main
+
+import (
+	"fmt"
+
+	// Imported so the module is required, but language.Parse (the vulnerable
+	// symbol in golang.org/x/text v0.3.5) is never called.
+	_ "golang.org/x/text/language"
+)
+
+func main() {
+	fmt.Println("hello; x/text is required but its vulnerable path is unused")
+}
+-- go.mod --
+module example.com/foo
+
+go 1.25.0
+
+require golang.org/x/text v0.3.5
+-- go.sum --
+golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index 4fde206..c86cdab 100644
+--- a/go.mod
++++ b/go.mod
+@@ -2,4 +2,4 @@ module example.com/foo
+ 
+ go 1.25.0
+ 
+-require golang.org/x/text v0.3.5
++require golang.org/x/text v0.3.7
+diff --git a/go.sum b/go.sum
+index bbd33e8..1f78e03 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,3 +1,2 @@
+-golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+-golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+-golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
++golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
++golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=

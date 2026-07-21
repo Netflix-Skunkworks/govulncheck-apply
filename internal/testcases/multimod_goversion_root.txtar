@@ -1,0 +1,58 @@
+A multi-module repository (two independent modules, NO go.work): the root
+module example.com/foo and a child module example.com/bar under sub/. The
+ONLY vulnerability is a Go standard-library issue in the ROOT module's
+net/http usage: GO-2024-2687 / CVE-2023-45288 (HTTP/2 CONTINUATION flood),
+fixed in go1.21.9. The child module is benign. The desired remediation is
+root go.mod `go 1.21.0` -> `go 1.21.9`.
+
+EXPECTED: FAIL.
+
+GAP: the vulncheck bot script cannot remediate standard-library vulnerabilities,
+and being in a multi-module repo does not change that. It only knows how to
+`go get` module versions, but stdlib fixes come from the Go toolchain/go
+directive. With GOTOOLCHAIN=local and an installed go1.26, the scan is evaluated
+against the running toolchain, so it never even reports the go1.21.9 fix (that
+`Fixed in:` line reads `go1.21.9` with no `@`, so the awk would skip it anyway);
+instead it reports newer stdlib CVEs whose `Fixed in:` lines look like
+`crypto/tls@go1.26.5`. The awk matches those (they contain `@`) and the script
+runs `go get crypto/tls@go1.26.5`, which errors ("can't request explicit version
+of standard library package"), short-circuits the `&& go mod tidy`, and leaves
+the tree unchanged. The script therefore produces an EMPTY diff while the
+want_diff bumps the root go directive, so the case fails.
+-- go.mod --
+module example.com/foo
+
+go 1.21.0
+-- main.go --
+package main
+
+import "net/http"
+
+// net/http is the vulnerable stdlib package (GO-2024-2687); the only fix is a
+// go-directive bump, which the bot cannot perform.
+func main() {
+	http.Get("http://example.com/")
+}
+-- sub/go.mod --
+module example.com/bar
+
+go 1.22.0
+-- sub/bar.go --
+package bar
+
+import "strings"
+
+// Greet returns a friendly greeting for name.
+func Greet(name string) string {
+	return strings.TrimSpace("hello " + name)
+}
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index 9b981c3..d7e9510 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,3 +1,3 @@
+ module example.com/foo
+
+-go 1.21.0
++go 1.21.9

@@ -1,0 +1,58 @@
+A multi-module repository (two independent modules, no go.work) where the only
+vulnerability lives in the CHILD module at sub/. The root module example.com/foo
+is benign; the child module example.com/foo/sub uses net/http and is affected by
+GO-2024-2687 / CVE-2023-45288 (HTTP/2 CONTINUATION flood), fixed in go1.21.9. The
+desired remediation is sub/go.mod `go 1.21.0` -> `go 1.21.9`.
+
+EXPECTED: FAIL.
+
+GAP: the vulncheck bot script runs only at the repo root, and `go ... ./...` does
+not descend into the separate nested module under sub/, so the child's net/http
+vulnerability is never even scanned; the root scan reports no called vulns and the
+pipeline is empty, so `go mod tidy` changes nothing. Two further gaps compound this:
+(1) the bot cannot remediate standard-library vulnerabilities at all -- it only
+knows how to `go get` module versions, while stdlib fixes come from the go
+directive/toolchain; and (2) under GOTOOLCHAIN=local with an installed go1.26,
+govulncheck evaluates the stdlib against the running toolchain, so it never reports
+the go1.21.9 fix. Even scanning the child directly, stdlib fix lines read like
+`Fixed in: go1.21.9` (no `@`) so the awk skips them; the only `@`-bearing lines are
+newer CVEs such as `crypto/tls@go1.26.5`, and `go get crypto/tls@go1.26.5` errors
+("can't request explicit version of standard library package"). The script produces
+an EMPTY diff while want_diff bumps the child go directive, so the case fails.
+-- go.mod --
+module example.com/foo
+
+go 1.22.0
+-- main.go --
+package main
+
+import "fmt"
+
+// main prints a greeting. Nothing here touches the standard-library HTTP/2
+// stack, so the root module has no vulnerabilities of its own.
+func main() {
+	fmt.Println("hello from example.com/foo")
+}
+-- sub/go.mod --
+module example.com/foo/sub
+
+go 1.21.0
+-- sub/server.go --
+package sub
+
+import "net/http"
+
+// net/http is the vulnerable stdlib package (GO-2024-2687).
+func Serve() (*http.Response, error) {
+	return http.Get("http://example.com/")
+}
+-- want_diff.txt --
+diff --git a/sub/go.mod b/sub/go.mod
+index 39cf66d..655fb81 100644
+--- a/sub/go.mod
++++ b/sub/go.mod
+@@ -1,3 +1,3 @@
+ module example.com/foo/sub
+ 
+-go 1.21.0
++go 1.21.9

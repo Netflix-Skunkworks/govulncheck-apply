@@ -1,0 +1,33 @@
+A Go module with one vulnerability that has no available fix.
+It calls jwt.MapClaims.VerifyAudience in github.com/dgrijalva/jwt-go, flagged by
+GO-2020-0017 (an authorization bypass). That module is abandoned and has no
+fixed release, so govulncheck prints "Fixed in: N/A", the bot's awk emits no
+`go get`, and remediation is a no-op: the diff must be empty.
+-- main.go --
+package main
+
+import (
+	"fmt"
+
+	"github.com/dgrijalva/jwt-go"
+)
+
+// jwt.MapClaims.VerifyAudience in github.com/dgrijalva/jwt-go is affected by
+// GO-2020-0017, an authorization bypass. The module is abandoned and has no
+// fixed release (the fix lives at the separate jwt-go/v4 module path), so the
+// vulncheck bot has nothing to bump.
+func main() {
+	claims := jwt.MapClaims{"aud": "example.com"}
+	ok := claims.VerifyAudience("example.com", true)
+	fmt.Println("audience ok:", ok)
+}
+-- go.mod --
+module example.com/nofix
+
+go 1.25.0
+
+require github.com/dgrijalva/jwt-go v3.2.0+incompatible
+-- go.sum --
+github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumCAMpl/TFQ4/5kLM=
+github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
+-- want_diff.txt --
