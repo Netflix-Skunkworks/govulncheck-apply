@@ -17,8 +17,11 @@ type finding struct {
 }
 
 // frame is one step of a finding's call trace. trace[0] is the vulnerable
-// module itself.
+// module itself; its Function is set only when govulncheck traced the vuln to
+// an actually-called symbol, which is how we tell called vulns from merely
+// imported ones.
 type frame struct {
-	Module  string `json:"module"`
-	Version string `json:"version"`
+	Module   string `json:"module"`
+	Version  string `json:"version"`
+	Function string `json:"function"`
 }

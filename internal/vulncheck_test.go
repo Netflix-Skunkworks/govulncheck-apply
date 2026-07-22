@@ -27,9 +27,7 @@ func TestVulncheck(t *testing.T) {
 		t.Fatal("no testcases/*.txtar files found")
 	}
 
-	// Build the applier once and pipe each fixture's govulncheck output into
-	// it by absolute path, so the test doesn't depend on a prebuilt binary
-	// living at some fixed location.
+	// Build the applier once; each fixture pipes its govulncheck output into it.
 	applier := filepath.Join(t.TempDir(), "govulncheck-apply")
 	run(t, ".", "go", "build", "-o", applier, "github.com/netflix-skunkworks/govulncheck-apply")
 
@@ -63,8 +61,7 @@ func TestVulncheck(t *testing.T) {
 			}
 			gitInit(t, repo)
 
-			run(t, repo, "bash", "-c", "go get -tool golang.org/x/vuln/cmd/govulncheck@v1.6.0")
-			run(t, repo, "bash", "-c", "go tool govulncheck -json ./... | '"+applier+"'")
+			run(t, repo, "bash", "-c", "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 -json ./... | '"+applier+"'")
 
 			run(t, repo, "git", "add", "-A")
 			got := run(t, repo, "git", "-c", "core.pager=cat", "diff", "--cached")
