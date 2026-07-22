@@ -1,5 +1,4 @@
 description: Multi-module repo where only the root requires a vulnerable x/text.
-skip: true
 
 -- go.mod --
 module example.com/foo
