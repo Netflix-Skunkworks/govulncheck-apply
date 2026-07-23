@@ -52,8 +52,8 @@ type fixes struct {
 }
 
 // parse reads a `govulncheck -json` stream and returns the remediation. It fixes
-// only called vulnerabilities — govulncheck traces those to an invoked symbol,
-// so trace[0] carries a Function.
+// every reported vulnerability that has a known fix, whether or not the
+// vulnerable symbol is actually called.
 func parse(r io.Reader) (fixes, error) {
 	dec := json.NewDecoder(r)
 	fix := fixes{modules: map[string]string{}}
@@ -79,11 +79,10 @@ func parse(r io.Reader) (fixes, error) {
 			continue
 		}
 		vuln := f.Trace[0]
-		if vuln.Function == "" || f.FixedVersion == "" {
+		if vuln.Module == "" || f.FixedVersion == "" {
 			continue
 		}
-		// A target can have several called vulns with different fixes; the
-		// highest fix covers them all.
+		// A module can have several vulns with different fixes; keep the highest.
 		if vuln.Module == "stdlib" {
 			if semver.Compare(f.FixedVersion, fix.goVersion) > 0 {
 				fix.goVersion = f.FixedVersion

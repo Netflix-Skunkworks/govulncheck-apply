@@ -1,5 +1,4 @@
 description: A vulnerable x/text that is required but never called.
-skip: true
 
 -- main.go --
 package main
