@@ -1,0 +1,20 @@
+A minimal govulncheck DB reporting only GO-2020-0017 (the called
+github.com/dgrijalva/jwt-go MapClaims.VerifyAudience vuln). The affected
+range has an "introduced" event but no "fixed", so there is no release to
+bump to and remediation is a no-op.
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"github.com/dgrijalva/jwt-go","vulns":[{"id":"GO-2020-0017","modified":"2026-07-22T00:00:00Z"}]}]
+-- ID/GO-2020-0017.json --
+{
+  "id": "GO-2020-0017",
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "github.com/dgrijalva/jwt-go", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}]}],
+      "ecosystem_specific": {"imports": [{"path": "github.com/dgrijalva/jwt-go", "symbols": ["MapClaims.VerifyAudience"]}]}
+    }
+  ]
+}
