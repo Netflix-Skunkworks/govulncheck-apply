@@ -20,6 +20,7 @@ v0.17.0 requires x/text v0.14.0, so it is raised to 0.14.0 for consistency.
 -- ID/GO-2023-2402.json --
 {
   "id": "GO-2023-2402",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2023-2402"},
   "modified": "2026-07-22T00:00:00Z",
   "affected": [
     {
@@ -32,6 +33,7 @@ v0.17.0 requires x/text v0.14.0, so it is raised to 0.14.0 for consistency.
 -- ID/GO-2023-1572.json --
 {
   "id": "GO-2023-1572",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2023-1572"},
   "modified": "2026-07-22T00:00:00Z",
   "affected": [
     {
@@ -44,6 +46,7 @@ v0.17.0 requires x/text v0.14.0, so it is raised to 0.14.0 for consistency.
 -- ID/GO-2023-1988.json --
 {
   "id": "GO-2023-1988",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2023-1988"},
   "modified": "2026-07-22T00:00:00Z",
   "affected": [
     {
@@ -56,6 +59,7 @@ v0.17.0 requires x/text v0.14.0, so it is raised to 0.14.0 for consistency.
 -- ID/GO-2022-1059.json --
 {
   "id": "GO-2022-1059",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2022-1059"},
   "modified": "2026-07-22T00:00:00Z",
   "affected": [
     {

@@ -8,6 +8,7 @@ required but blank-imported, so the vulnerable symbol is never called.
 -- ID/GO-2021-0113.json --
 {
   "id": "GO-2021-0113",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2021-0113"},
   "modified": "2026-07-22T00:00:00Z",
   "affected": [
     {
