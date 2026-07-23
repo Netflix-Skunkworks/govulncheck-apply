@@ -1,4 +1,4 @@
-description: Multi-module repo where only the root requires a vulnerable x/text.
+description: Root and nested modules each require a vulnerable x/text. govulncheck ./... only scans the root module, so govulncheck-apply remediates the root and leaves the nested module unchanged.
 
 -- go.mod --
 module example.com/foo
@@ -23,15 +23,27 @@ golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
 golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
 golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
 -- sub/go.mod --
-module example.com/bar
+module example.com/foo/sub
 
 go 1.25.0
--- sub/lib.go --
-package bar
 
-func Greeting(name string) string {
-	return "hello, " + name
+require golang.org/x/text v0.3.5
+-- sub/lib.go --
+package sub
+
+import (
+	"fmt"
+
+	"golang.org/x/text/language"
+)
+
+func ParseTag(s string) {
+	fmt.Println(language.Parse(s))
 }
+-- sub/go.sum --
+golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
 -- want_diff.txt --
 diff --git a/go.mod b/go.mod
 index 4fde206..c86cdab 100644
