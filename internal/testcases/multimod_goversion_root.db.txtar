@@ -8,6 +8,7 @@ the test pins GOTOOLCHAIN to go1.21.0.
 -- ID/GO-2024-2687.json --
 {
   "id": "GO-2024-2687",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2024-2687"},
   "modified": "2026-07-22T00:00:00Z",
   "affected": [
     {

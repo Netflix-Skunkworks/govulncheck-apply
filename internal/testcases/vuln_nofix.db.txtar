@@ -9,6 +9,7 @@ bump to and remediation is a no-op.
 -- ID/GO-2020-0017.json --
 {
   "id": "GO-2020-0017",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2020-0017"},
   "modified": "2026-07-22T00:00:00Z",
   "affected": [
     {
