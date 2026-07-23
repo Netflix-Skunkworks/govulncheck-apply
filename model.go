@@ -11,7 +11,6 @@ type message struct {
 // emits a finding per trace granularity (module, package, called function), so
 // the same OSV can appear several times with an identical module and fix.
 type finding struct {
-	OSV          string  `json:"osv"`
 	FixedVersion string  `json:"fixed_version"`
 	Trace        []frame `json:"trace"`
 }

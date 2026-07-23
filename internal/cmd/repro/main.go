@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -15,15 +14,14 @@ import (
 var testcase = flag.String("testcase", "", "ex: vuln_xtext")
 
 func main() {
-	ctx := context.Background()
 	flag.Parse()
-	if err := run(ctx); err != nil {
+	if err := run(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
-func run(_ context.Context) error {
+func run() error {
 	if *testcase == "" {
 		return fmt.Errorf("no --testcase passed")
 	}
