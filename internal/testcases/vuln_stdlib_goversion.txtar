@@ -1,5 +1,5 @@
 description: A single module whose only vuln is in the stdlib (net/http).
-skip: true
+gotoolchain: go1.21.0
 
 -- go.mod --
 module example.com/foo

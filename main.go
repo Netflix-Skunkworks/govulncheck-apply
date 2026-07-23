@@ -43,27 +43,34 @@ func main() {
 	}
 }
 
-// parse reads a `govulncheck -json` stream and returns, per module, the version
-// to upgrade to. It fixes only called vulnerabilities — govulncheck traces those
-// to an invoked symbol, so trace[0] carries a Function — and skips the standard
-// library, whose fix is a go-directive bump, not a `go get`.
-func parse(r io.Reader) (map[string]string, error) {
+// fixes is a remediation: the version to upgrade each module to, and the go
+// directive to bump to for standard-library vulns (whose only fix is a newer
+// toolchain).
+type fixes struct {
+	modules   map[string]string // module path -> fixed version
+	goVersion string            // fixed version for stdlib vulns, e.g. "v1.21.9"
+}
+
+// parse reads a `govulncheck -json` stream and returns the remediation. It fixes
+// only called vulnerabilities — govulncheck traces those to an invoked symbol,
+// so trace[0] carries a Function.
+func parse(r io.Reader) (fixes, error) {
 	dec := json.NewDecoder(r)
-	fixes := map[string]string{}
+	fix := fixes{modules: map[string]string{}}
 	decoded := false
 	for {
 		var msg message
 		switch err := dec.Decode(&msg); err {
 		case nil:
 		case io.EOF:
-			return fixes, nil
+			return fix, nil
 		default:
 			// A failure before anything decoded almost always means the input
 			// isn't the JSON stream at all (e.g. `-json` was forgotten).
 			if decoded {
-				return nil, err
+				return fixes{}, err
 			}
-			return nil, fmt.Errorf("input could not be parsed. did you pass `govulncheck -json` output to this program? the error was: %w", err)
+			return fixes{}, fmt.Errorf("input could not be parsed. did you pass `govulncheck -json` output to this program? the error was: %w", err)
 		}
 		decoded = true
 
@@ -72,27 +79,40 @@ func parse(r io.Reader) (map[string]string, error) {
 			continue
 		}
 		vuln := f.Trace[0]
-		if vuln.Function == "" || vuln.Module == "stdlib" || f.FixedVersion == "" {
+		if vuln.Function == "" || f.FixedVersion == "" {
 			continue
 		}
-		// A module can have several called vulns with different fixes; the
+		// A target can have several called vulns with different fixes; the
 		// highest fix covers them all.
-		if semver.Compare(f.FixedVersion, fixes[vuln.Module]) > 0 {
-			fixes[vuln.Module] = f.FixedVersion
+		if vuln.Module == "stdlib" {
+			if semver.Compare(f.FixedVersion, fix.goVersion) > 0 {
+				fix.goVersion = f.FixedVersion
+			}
+		} else if semver.Compare(f.FixedVersion, fix.modules[vuln.Module]) > 0 {
+			fix.modules[vuln.Module] = f.FixedVersion
 		}
 	}
 }
 
-func apply(fixes map[string]string) error {
-	if len(fixes) == 0 {
+func apply(fix fixes) error {
+	if len(fix.modules) == 0 && fix.goVersion == "" {
 		return nil
 	}
-	var modules []string
-	for _, mod := range slices.Sorted(maps.Keys(fixes)) {
-		modules = append(modules, mod+"@"+fixes[mod])
+	if fix.goVersion != "" {
+		// govulncheck reports stdlib fixes as e.g. "v1.21.9"; the go directive
+		// wants "1.21.9".
+		if err := goModEditGo(strings.TrimPrefix(fix.goVersion, "v")); err != nil {
+			return err
+		}
 	}
-	if err := goGet(modules...); err != nil {
-		return err
+	if len(fix.modules) > 0 {
+		var modules []string
+		for _, mod := range slices.Sorted(maps.Keys(fix.modules)) {
+			modules = append(modules, mod+"@"+fix.modules[mod])
+		}
+		if err := goGet(modules...); err != nil {
+			return err
+		}
 	}
 	return goModTidy()
 }
@@ -105,6 +125,10 @@ func goGet(modules ...string) error {
 
 func goModTidy() error {
 	return run(exec.Command("go", "mod", "tidy"))
+}
+
+func goModEditGo(version string) error {
+	return run(exec.Command("go", "mod", "edit", "-go="+version))
 }
 
 // run executes cmd, surfacing its output on stderr.
