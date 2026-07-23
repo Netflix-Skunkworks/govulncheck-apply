@@ -1,0 +1,19 @@
+A minimal govulncheck DB reporting only GO-2024-2687 (net/http HTTP/2
+CONTINUATION flood, fixed in go1.21.9). Evaluated against the go directive, so
+the test pins GOTOOLCHAIN to go1.21.0.
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"stdlib","vulns":[{"id":"GO-2024-2687","modified":"2026-07-22T00:00:00Z","fixed":"1.21.9"}]}]
+-- ID/GO-2024-2687.json --
+{
+  "id": "GO-2024-2687",
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "stdlib", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "1.21.9"}]}],
+      "ecosystem_specific": {"imports": [{"path": "net/http", "symbols": ["Get"]}]}
+    }
+  ]
+}

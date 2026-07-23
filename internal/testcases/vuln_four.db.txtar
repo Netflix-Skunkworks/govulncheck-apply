@@ -1,0 +1,67 @@
+A minimal govulncheck DB reporting one called vulnerability in each of the
+four x/ modules the fixture exercises:
+
+  GO-2023-2402  golang.org/x/crypto/ssh.NewClientConn        fixed 0.17.0
+  GO-2023-1572  golang.org/x/image/tiff.Decode              fixed 0.5.0
+  GO-2023-1988  golang.org/x/net/html.Render                fixed 0.13.0
+  GO-2022-1059  golang.org/x/text/language.ParseAcceptLanguage fixed 0.14.0
+
+Each vuln is CALLED, so the blast radius is a clean four-module bump. The
+fixed versions are the lowest real releases that fix each vuln AND resolve
+together in a single `go get`: x/text's true fix is 0.3.8, but x/crypto
+v0.17.0 requires x/text v0.14.0, so it is raised to 0.14.0 for consistency.
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"golang.org/x/crypto","vulns":[{"id":"GO-2023-2402","modified":"2026-07-22T00:00:00Z","fixed":"0.17.0"}]},
+{"path":"golang.org/x/image","vulns":[{"id":"GO-2023-1572","modified":"2026-07-22T00:00:00Z","fixed":"0.5.0"}]},
+{"path":"golang.org/x/net","vulns":[{"id":"GO-2023-1988","modified":"2026-07-22T00:00:00Z","fixed":"0.13.0"}]},
+{"path":"golang.org/x/text","vulns":[{"id":"GO-2022-1059","modified":"2026-07-22T00:00:00Z","fixed":"0.14.0"}]}]
+-- ID/GO-2023-2402.json --
+{
+  "id": "GO-2023-2402",
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "golang.org/x/crypto", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "0.17.0"}]}],
+      "ecosystem_specific": {"imports": [{"path": "golang.org/x/crypto/ssh", "symbols": ["NewClientConn"]}]}
+    }
+  ]
+}
+-- ID/GO-2023-1572.json --
+{
+  "id": "GO-2023-1572",
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "golang.org/x/image", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "0.5.0"}]}],
+      "ecosystem_specific": {"imports": [{"path": "golang.org/x/image/tiff", "symbols": ["Decode"]}]}
+    }
+  ]
+}
+-- ID/GO-2023-1988.json --
+{
+  "id": "GO-2023-1988",
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "golang.org/x/net", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "0.13.0"}]}],
+      "ecosystem_specific": {"imports": [{"path": "golang.org/x/net/html", "symbols": ["Render"]}]}
+    }
+  ]
+}
+-- ID/GO-2022-1059.json --
+{
+  "id": "GO-2022-1059",
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "golang.org/x/text", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "0.14.0"}]}],
+      "ecosystem_specific": {"imports": [{"path": "golang.org/x/text/language", "symbols": ["ParseAcceptLanguage"]}]}
+    }
+  ]
+}

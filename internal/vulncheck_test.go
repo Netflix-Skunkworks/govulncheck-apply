@@ -23,13 +23,16 @@ func TestVulncheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The sibling foo.db.txtar vendored databases aren't test cases.
+	cases = slices.DeleteFunc(cases, func(p string) bool { return strings.HasSuffix(p, ".db.txtar") })
 	if len(cases) == 0 {
 		t.Fatal("no testcases/*.txtar files found")
 	}
 
-	// Build the applier once; each fixture pipes its govulncheck output into it.
+	// Build the applier and govulncheck once, reused by every case.
 	applier := filepath.Join(t.TempDir(), "govulncheck-apply")
 	run(t, ".", "go", "build", "-o", applier, "github.com/netflix-skunkworks/govulncheck-apply")
+	govulncheck := buildGovulncheck(t)
 
 	for _, path := range cases {
 		name := strings.TrimSuffix(filepath.Base(path), ".txtar")
@@ -61,7 +64,15 @@ func TestVulncheck(t *testing.T) {
 			}
 			gitInit(t, repo)
 
-			run(t, repo, "bash", "-c", "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 -json ./... | '"+applier+"'")
+			// Scan against the vendored DB for deterministic findings; a
+			// gotoolchain directive pins the toolchain the stdlib is analyzed against.
+			db := loadDB(t, path)
+			toolchain := directives(archive.Comment)["gotoolchain"]
+			if toolchain == "" {
+				toolchain = "local"
+			}
+			scan := "GOTOOLCHAIN=" + toolchain + " '" + govulncheck + "' -db file://" + db + " -json ./... | '" + applier + "'"
+			run(t, repo, "bash", "-c", scan)
 
 			run(t, repo, "git", "add", "-A")
 			got := run(t, repo, "git", "-c", "core.pager=cat", "diff", "--cached")
@@ -86,6 +97,38 @@ func directives(comment []byte) map[string]string {
 		m[strings.TrimSpace(key)] = strings.TrimSpace(val)
 	}
 	return m
+}
+
+// buildGovulncheck installs govulncheck once and returns the binary path. It's
+// prebuilt (not `go run @version`) so a case can pin GOTOOLCHAIN for the stdlib
+// analysis without forcing that toolchain to also compile govulncheck.
+func buildGovulncheck(t *testing.T) string {
+	t.Helper()
+	gobin := t.TempDir()
+	cmd := exec.Command("go", "install", "golang.org/x/vuln/cmd/govulncheck@v1.6.0")
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GOFLAGS=", "GOBIN="+gobin)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install govulncheck: %v\n%s", err, out)
+	}
+	return filepath.Join(gobin, "govulncheck")
+}
+
+// loadDB extracts the test's sibling foo.db.txtar database into a temp dir.
+func loadDB(t *testing.T, txtarPath string) string {
+	t.Helper()
+	ar, err := txtar.ParseFile(strings.TrimSuffix(txtarPath, ".txtar") + ".db.txtar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsys, err := txtar.FS(ar)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, fsys); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 // take removes the named file from the archive and returns its contents.
