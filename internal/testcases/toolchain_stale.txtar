@@ -1,0 +1,27 @@
+description: A stdlib vuln with a `toolchain` directive pinned below the fix. The tool bumps the `go` directive to 1.21.9 but leaves `toolchain go1.21.4`, yielding a contradictory toolchain<go go.mod; correct remediation reconciles the toolchain pin too.
+gotoolchain: go1.21.0
+skip: true
+-- go.mod --
+module example.com/staletoolchain
+
+go 1.21.0
+
+toolchain go1.21.4
+-- main.go --
+package main
+
+import "net/http"
+
+func main() { http.Get("http://example.com/") }
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index 1e5222d..ddd536d 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,5 +1,3 @@
+ module example.com/staletoolchain
+ 
+-go 1.21.0
+-
+-toolchain go1.21.4
++go 1.21.9
