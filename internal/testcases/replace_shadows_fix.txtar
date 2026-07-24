@@ -1,5 +1,4 @@
 description: A version `replace` pins x/text to a vulnerable version; the tool bumps only the `require` line, so the compiled version stays vulnerable while it reports success. Correct remediation bumps the replace target too.
-skip: true
 -- go.mod --
 module example.com/replaceshadow
 

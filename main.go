@@ -28,6 +28,7 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/mod/module"
 	"golang.org/x/mod/semver"
 )
 
@@ -112,6 +113,9 @@ func apply(fix fixes) error {
 		if err := goGet(modules...); err != nil {
 			return err
 		}
+		if err := bumpReplacedModules(fix.modules); err != nil {
+			return err
+		}
 	}
 	return goModTidy()
 }
@@ -132,27 +136,62 @@ func goModEditGo(version string) error {
 	if err := run(exec.Command("go", "mod", "edit", "-go="+version)); err != nil {
 		return err
 	}
-	out, err := exec.Command("go", "mod", "edit", "-json").Output()
+	mod, err := readModEdit()
 	if err != nil {
-		return fmt.Errorf("go mod edit -json: %w", err)
-	}
-	var mod struct{ Toolchain string }
-	if err := json.Unmarshal(out, &mod); err != nil {
 		return err
 	}
-	if toolchainStale(mod.Toolchain, version) {
+	if mod.Toolchain == "" {
+		return nil
+	}
+	if semver.Compare("v"+strings.TrimPrefix(mod.Toolchain, "go"), "v"+version) < 0 {
+		// The toolchain version is less than the Go version: drop it.
 		return run(exec.Command("go", "mod", "edit", "-toolchain=none"))
 	}
 	return nil
 }
 
-// toolchainStale reports whether toolchain (a go.mod directive like "go1.21.4",
-// or "" if absent) is older than goVersion (like "1.21.9").
-func toolchainStale(toolchain, goVersion string) bool {
-	if toolchain == "" {
-		return false
+// bumpReplacedModules updates replace statement versions with the given fixes.
+func bumpReplacedModules(fixed map[string]string) error {
+	mod, err := readModEdit()
+	if err != nil {
+		return err
 	}
-	return semver.Compare("v"+strings.TrimPrefix(toolchain, "go"), "v"+goVersion) < 0
+	for _, r := range mod.Replace {
+		v, ok := fixed[r.Old.Path]
+		if !ok || r.New.Path != r.Old.Path || r.New.Version == "" {
+			continue
+		}
+		replacement := r.Old.String() + "=" + r.New.Path + "@" + v
+		if err := run(exec.Command("go", "mod", "edit", "-replace="+replacement)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// modEdit is the subset of `go mod edit -json` this tool reads back.
+type modEdit struct {
+	Toolchain string
+	Replace   []replace
+}
+
+// replace mirrors one entry of go.mod's replace block.
+type replace struct {
+	Old module.Version
+	New module.Version
+}
+
+// readModEdit decodes `go mod edit -json` for the go.mod in the working directory.
+func readModEdit() (modEdit, error) {
+	out, err := exec.Command("go", "mod", "edit", "-json").Output()
+	if err != nil {
+		return modEdit{}, fmt.Errorf("go mod edit -json: %w", err)
+	}
+	var m modEdit
+	if err := json.Unmarshal(out, &m); err != nil {
+		return modEdit{}, err
+	}
+	return m, nil
 }
 
 // run executes cmd, surfacing its output on stderr.
