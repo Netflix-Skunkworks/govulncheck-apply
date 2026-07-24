@@ -126,8 +126,33 @@ func goModTidy() error {
 	return run(exec.Command("go", "mod", "tidy"))
 }
 
+// goModEditGo bumps the go directive to version (e.g. "1.21.9"), then drops any
+// toolchain directive left below it (which Go would otherwise ignore or fail on).
 func goModEditGo(version string) error {
-	return run(exec.Command("go", "mod", "edit", "-go="+version))
+	if err := run(exec.Command("go", "mod", "edit", "-go="+version)); err != nil {
+		return err
+	}
+	out, err := exec.Command("go", "mod", "edit", "-json").Output()
+	if err != nil {
+		return fmt.Errorf("go mod edit -json: %w", err)
+	}
+	var mod struct{ Toolchain string }
+	if err := json.Unmarshal(out, &mod); err != nil {
+		return err
+	}
+	if toolchainStale(mod.Toolchain, version) {
+		return run(exec.Command("go", "mod", "edit", "-toolchain=none"))
+	}
+	return nil
+}
+
+// toolchainStale reports whether toolchain (a go.mod directive like "go1.21.4",
+// or "" if absent) is older than goVersion (like "1.21.9").
+func toolchainStale(toolchain, goVersion string) bool {
+	if toolchain == "" {
+		return false
+	}
+	return semver.Compare("v"+strings.TrimPrefix(toolchain, "go"), "v"+goVersion) < 0
 }
 
 // run executes cmd, surfacing its output on stderr.

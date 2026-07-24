@@ -1,6 +1,5 @@
 description: A stdlib vuln with a `toolchain` directive pinned below the fix. The tool bumps the `go` directive to 1.21.9 but leaves `toolchain go1.21.4`, yielding a contradictory toolchain<go go.mod; correct remediation reconciles the toolchain pin too.
 gotoolchain: go1.21.0
-skip: true
 -- go.mod --
 module example.com/staletoolchain
 
