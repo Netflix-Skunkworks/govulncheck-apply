@@ -1,4 +1,17 @@
-description: A version `replace` pins x/text to a vulnerable version; the tool bumps only the `require` line, so the compiled version stays vulnerable while it reports success. Correct remediation bumps the replace target too.
+# A `replace` directive holds x/text at the vulnerable v0.3.5, so raising the
+# `require` directive alone would still build v0.3.5; govulncheck-apply rewrites
+# the replacement version too.
+#
+# `replace golang.org/x/text => golang.org/x/text v0.3.5` names no version on the
+# left, so every version of x/text in the module graph resolves to v0.3.5.
+# Minimal version selection still runs over the require directives, but its
+# result is then replaced: raising the require directive to v0.3.7 on its own
+# leaves the build on v0.3.5, with GO-2021-0113 still present.
+#
+# bumpReplacedModules covers this. A replacement whose new module path equals the
+# old one and carries a version substitutes a different version of the same
+# module, so the fixed version applies to it as well, and both directives move to
+# v0.3.7.
 -- go.mod --
 module example.com/replaceshadow
 

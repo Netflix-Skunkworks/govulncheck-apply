@@ -1,7 +1,7 @@
-A minimal govulncheck DB reporting only GO-2020-0017 (the called
-github.com/dgrijalva/jwt-go MapClaims.VerifyAudience vuln). The affected
-range has an "introduced" event but no "fixed", so there is no release to
-bump to and remediation is a no-op.
+# A minimal govulncheck DB reporting only GO-2020-0017 (the called
+# github.com/dgrijalva/jwt-go MapClaims.VerifyAudience vuln). Its affected range
+# has an "introduced" event but no "fixed", so govulncheck reports the finding
+# with an empty fixed_version.
 -- index/db.json --
 {"modified":"2026-07-22T00:00:00Z"}
 -- index/modules.json --

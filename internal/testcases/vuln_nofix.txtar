@@ -1,5 +1,4 @@
-description: A called vuln with no fixed release; nothing to bump.
-
+# A called vuln with no fixed version; govulncheck-apply makes no edits.
 -- main.go --
 package main
 

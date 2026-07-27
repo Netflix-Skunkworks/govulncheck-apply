@@ -1,4 +1,9 @@
-description: A stdlib vuln with a `toolchain` directive pinned below the fix. The tool bumps the `go` directive to 1.21.9 but leaves `toolchain go1.21.4`, yielding a contradictory toolchain<go go.mod; correct remediation reconciles the toolchain pin too.
+# A stdlib vulnerability fixed in Go 1.21.9, in a main module with
+# `toolchain go1.21.4`.
+#
+# The `go` directive is bumped to 1.21.9, which leaves the toolchain directive
+# below the required Go version, so it is removed.
+
 gotoolchain: go1.21.0
 -- go.mod --
 module example.com/staletoolchain

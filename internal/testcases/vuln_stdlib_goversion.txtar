@@ -1,6 +1,15 @@
-description: A single module whose only vuln is in the stdlib (net/http).
-gotoolchain: go1.21.0
+# The only vuln is in the standard library, so the fix is a `go` directive bump
+# rather than a module upgrade.
+#
+# govulncheck reports GO-2024-2687 against `stdlib` with a fix in go1.21.9, and
+# govulncheck-apply bumps the `go` directive from 1.21.0 to 1.21.9. The main
+# module has no require directives, so go.mod is the only file touched.
+#
+# govulncheck takes the standard library version from the toolchain running the
+# scan, not from the `go` directive, so the test sets GOTOOLCHAIN to go1.21.0;
+# a current toolchain would already be past the fix and report nothing.
 
+gotoolchain: go1.21.0
 -- go.mod --
 module example.com/foo
 

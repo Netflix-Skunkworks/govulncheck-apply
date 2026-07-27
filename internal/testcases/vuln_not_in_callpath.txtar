@@ -1,5 +1,9 @@
-description: A vulnerable x/text that is required but never called.
-
+# An imported but uncalled vulnerability is still remediated.
+#
+# main.go blank-imports golang.org/x/text/language, so govulncheck reports
+# GO-2021-0113 at the module and package level but not at the symbol level:
+# language.Parse is never called. govulncheck-apply fixes every finding with a
+# known fix regardless of level, so the require directive still moves to v0.3.7.
 -- main.go --
 package main
 

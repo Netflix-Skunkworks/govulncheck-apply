@@ -26,9 +26,11 @@ import (
 	"strings"
 
 	"golang.org/x/tools/txtar"
+
+	"github.com/netflix-skunkworks/govulncheck-apply/internal"
 )
 
-// govulncheck is pinned to the same version the test harness scans with.
+// govulncheck is the same version the test harness scans with.
 const govulncheck = "golang.org/x/vuln/cmd/govulncheck@v1.6.0"
 
 var testcase = flag.String("testcase", "", "ex: vuln_xtext")
@@ -74,9 +76,10 @@ func run() error {
 	}
 
 	// Prebuild both tools into dir. govulncheck is built with the local
-	// toolchain so a pinned GOTOOLCHAIN applies only to the stdlib analysis, not
-	// to building govulncheck itself (which needs a recent Go). The applier must
-	// be a binary because it can't be `go run` from inside the scenario's module.
+	// toolchain so a case's GOTOOLCHAIN applies only to the stdlib analysis, not
+	// to building govulncheck itself (which needs a recent Go). govulncheck-apply
+	// must be a binary because it can't be `go run` from inside the scenario's
+	// module.
 	if err := goTool([]string{"GOTOOLCHAIN=local"}, "build", "-o", filepath.Join(dir, "govulncheck-apply"), "github.com/netflix-skunkworks/govulncheck-apply"); err != nil {
 		return err
 	}
@@ -84,13 +87,16 @@ func run() error {
 		return err
 	}
 
-	d := directives(archive.Comment)
+	d, err := internal.Directives(archive.Comment)
+	if err != nil {
+		return fmt.Errorf("%s.txtar: %w", *testcase, err)
+	}
 	var toolchain string
 	if gt := d["gotoolchain"]; gt != "" {
 		toolchain = "GOTOOLCHAIN=" + gt + " "
 	}
-	if desc := d["description"]; desc != "" {
-		fmt.Printf("\n%s: %s\n", *testcase, desc)
+	if desc := internal.Description(archive.Comment); desc != "" {
+		fmt.Printf("\n%s\n", desc)
 	}
 	fmt.Printf(`
 Scenario ready at %[1]s
@@ -107,20 +113,6 @@ func extract(archive *txtar.Archive, dir string) error {
 		return err
 	}
 	return os.CopyFS(dir, fsys)
-}
-
-// directives parses the leading "key: value" lines of a txtar comment, matching
-// the test harness. Parsing stops at the first blank or non-directive line.
-func directives(comment []byte) map[string]string {
-	m := map[string]string{}
-	for line := range strings.SplitSeq(string(comment), "\n") {
-		key, val, ok := strings.Cut(line, ":")
-		if !ok || strings.ContainsAny(strings.TrimSpace(key), " \t") {
-			break
-		}
-		m[strings.TrimSpace(key)] = strings.TrimSpace(val)
-	}
-	return m
 }
 
 // goTool runs `go args...` with extra environment, streaming output to stderr.

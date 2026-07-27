@@ -1,5 +1,11 @@
-description: Root and nested modules each require a vulnerable x/text. govulncheck ./... only scans the root module, so govulncheck-apply remediates the root and leaves the nested module unchanged.
-
+# A nested module requires the same vulnerable x/text as the main module, but
+# `./...` doesn't match packages in a nested module, so only the main module is
+# remediated.
+#
+# sub/ is its own module, so govulncheck reports GO-2021-0113 for main.go's call
+# to language.Parse and not for sub/lib.go's. govulncheck-apply edits the go.mod
+# in its working directory, leaving sub/go.mod and sub/go.sum at v0.3.5;
+# remediating sub/ takes a separate govulncheck run from inside it.
 -- go.mod --
 module example.com/foo
 

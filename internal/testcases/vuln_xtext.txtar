@@ -1,5 +1,9 @@
-description: A single module with one called x/text vuln.
-
+# One called golang.org/x/text vulnerability in the main module.
+#
+# govulncheck-apply bumps the `require` directive from v0.3.5 to the fixed
+# v0.3.7. go.sum also loses the golang.org/x/tools go.mod hash: v0.3.5 declares
+# `go 1.11`, so the main module loads its full module graph, while v0.3.7
+# declares `go 1.17` and so is pruned.
 -- main.go --
 package main
 
