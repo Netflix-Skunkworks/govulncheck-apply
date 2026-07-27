@@ -106,11 +106,7 @@ func apply(fix fixes) error {
 		}
 	}
 	if len(fix.modules) > 0 {
-		var modules []string
-		for _, mod := range slices.Sorted(maps.Keys(fix.modules)) {
-			modules = append(modules, mod+"@"+fix.modules[mod])
-		}
-		if err := goGet(modules...); err != nil {
+		if err := requireModules(fix.modules); err != nil {
 			return err
 		}
 		if err := bumpReplacedModules(fix.modules); err != nil {
@@ -120,10 +116,17 @@ func apply(fix fixes) error {
 	return goModTidy()
 }
 
-// goGet upgrades every module@version spec in a single invocation, so the
-// module graph is resolved once.
-func goGet(modules ...string) error {
-	return run(exec.Command("go", append([]string{"get"}, modules...)...))
+// requireModules raises the minimum required version of each module to the
+// version that fixes it. A require directive is a minimum, so MVS selects the
+// higher of that and whatever the rest of the graph already requires: a module
+// another fix carries past its own needs no special handling, and nothing is
+// downgraded.
+func requireModules(fixed map[string]string) error {
+	args := []string{"mod", "edit"}
+	for _, mod := range slices.Sorted(maps.Keys(fixed)) {
+		args = append(args, "-require="+mod+"@"+fixed[mod])
+	}
+	return run(exec.Command("go", args...))
 }
 
 func goModTidy() error {

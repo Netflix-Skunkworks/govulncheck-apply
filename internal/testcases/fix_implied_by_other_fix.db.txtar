@@ -1,0 +1,33 @@
+A minimal govulncheck DB reporting GO-2023-2402 (called
+golang.org/x/crypto/ssh.NewClientConn, fixed in v0.17.0) and GO-2026-5942 (called
+golang.org/x/net/dns/dnsmessage.Message.Unpack, fixed in v0.56.0).
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"golang.org/x/crypto","vulns":[{"id":"GO-2023-2402","modified":"2026-07-22T00:00:00Z","fixed":"0.17.0"}]},{"path":"golang.org/x/net","vulns":[{"id":"GO-2026-5942","modified":"2026-07-22T00:00:00Z","fixed":"0.56.0"}]}]
+-- ID/GO-2023-2402.json --
+{
+  "id": "GO-2023-2402",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2023-2402"},
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "golang.org/x/crypto", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "0.17.0"}]}],
+      "ecosystem_specific": {"imports": [{"path": "golang.org/x/crypto/ssh", "symbols": ["NewClientConn"]}]}
+    }
+  ]
+}
+-- ID/GO-2026-5942.json --
+{
+  "id": "GO-2026-5942",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2026-5942"},
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "golang.org/x/net", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "0.56.0"}]}],
+      "ecosystem_specific": {"imports": [{"path": "golang.org/x/net/dns/dnsmessage", "symbols": ["Message.Unpack"]}]}
+    }
+  ]
+}
