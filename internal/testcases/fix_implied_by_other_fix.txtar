@@ -1,0 +1,96 @@
+description: Two called vulns where one module's fix is already implied by the other's.
+
+golang.org/x/crypto has GO-2023-2402 (fixed in v0.17.0) and golang.org/x/net has
+GO-2026-5942 (fixed in v0.56.0). Both are called. But x/net v0.56.0's go.mod
+requires golang.org/x/crypto v0.53.0, so upgrading x/net already carries x/crypto
+past its own fix.
+
+Asking for both in one `go get` needs x/crypto at two different versions -- v0.17.0
+from the argument and v0.53.0 to satisfy the x/net upgrade -- and `go get` reports
+an error rather than choosing:
+
+	go: golang.org/x/net@v0.56.0 requires golang.org/x/crypto@v0.53.0, not golang.org/x/crypto@v0.17.0
+
+Nothing is unsatisfiable here: a `require` is a minimum, and MVS selects the
+highest required version. Naming x/crypto at all is what fails, so the fix is to
+drop an argument whose module another argument already requires at or above the
+fixed version. The want_diff below is that result -- x/net at v0.56.0 and x/crypto
+carried to v0.53.0, which is past v0.17.0, so GO-2023-2402 is still remediated.
+
+Reduced from ghe/corp/ngo, where x/net v0.56.0 and golang.org/x/sys v0.44.0
+collided the same way.
+-- go.mod --
+module example.com/impliedfix
+
+go 1.23.0
+
+require (
+	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
+	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
+)
+
+require golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
+-- main.go --
+package main
+
+import (
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/net/dns/dnsmessage"
+)
+
+func main() {
+	ssh.NewClientConn(nil, "", &ssh.ClientConfig{HostKeyCallback: ssh.InsecureIgnoreHostKey()})
+
+	var m dnsmessage.Message
+	m.Unpack(nil)
+}
+-- go.sum --
+golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd h1:XcWmESyNjXJMLahc3mqVQJcgSTDxFxhETVlfk9uGc38=
+golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
+golang.org/x/net v0.0.0-20220225172249-27dd8689420f h1:oA4XRj0qtSt8Yo1Zms0CUlsT3KG69V2UGQWPBxujDmc=
+golang.org/x/net v0.0.0-20220225172249-27dd8689420f/go.mod h1:CfG3xpIq0wQ8r1q4Su4UZFWDARRcnwPjda9FqA0JpMk=
+golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e h1:fLOSk5Q00efkSvAm+4xcoXD+RRmLmmulPn5I3Y9F2EM=
+golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 h1:JGgROgKl9N8DuW20oFS5gxc+lE67/N3FcwmBPMe7ArY=
+golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index 6672603..0ca0dfa 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,10 +1,10 @@
+ module example.com/impliedfix
+ 
+-go 1.23.0
++go 1.25.0
+ 
+ require (
+-	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
+-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
++	golang.org/x/crypto v0.53.0
++	golang.org/x/net v0.56.0
+ )
+ 
+-require golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
++require golang.org/x/sys v0.46.0 // indirect
+diff --git a/go.sum b/go.sum
+index f191e28..40fd7a5 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,8 +1,8 @@
+-golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd h1:XcWmESyNjXJMLahc3mqVQJcgSTDxFxhETVlfk9uGc38=
+-golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
+-golang.org/x/net v0.0.0-20220225172249-27dd8689420f h1:oA4XRj0qtSt8Yo1Zms0CUlsT3KG69V2UGQWPBxujDmc=
+-golang.org/x/net v0.0.0-20220225172249-27dd8689420f/go.mod h1:CfG3xpIq0wQ8r1q4Su4UZFWDARRcnwPjda9FqA0JpMk=
+-golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e h1:fLOSk5Q00efkSvAm+4xcoXD+RRmLmmulPn5I3Y9F2EM=
+-golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 h1:JGgROgKl9N8DuW20oFS5gxc+lE67/N3FcwmBPMe7ArY=
+-golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
++golang.org/x/crypto v0.53.0 h1:QZ4Muo8THX6CizN2vPPd5fBGHyogrdK9fG4wLPFUsto=
++golang.org/x/crypto v0.53.0/go.mod h1:DNLU434OwVakk9PzuwV8w62mAJpRJL3vsgcfp4Qnsio=
++golang.org/x/net v0.56.0 h1:Rw8j/hFzGvJUZwNBXnAtf5sVDVt+65SK2C7IxCxZt5o=
++golang.org/x/net v0.56.0/go.mod h1:D3Ku6r+V6JROoZK144D2XfMHFcMq/0zSfLelVTCFKec=
++golang.org/x/sys v0.46.0 h1:noSf2Fq6F8DBgS+LysIkx7rIExoNHJsxOAtPp4rthXw=
++golang.org/x/sys v0.46.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
++golang.org/x/term v0.44.0 h1:0rLvDRCtNj0gZkyIXhCyOb2OAzEhLVqc4B+hrsBhrmc=
++golang.org/x/term v0.44.0/go.mod h1:7ze4MdzUzLXpSAoFP1H0bOI9aXDqveSvatT5vKcFh2Y=
