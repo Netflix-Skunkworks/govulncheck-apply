@@ -113,7 +113,10 @@ func apply(fix fixes) error {
 			return err
 		}
 	}
-	return goModTidy()
+	if err := goModTidy(); err != nil {
+		return err
+	}
+	return goModVendor()
 }
 
 // requireModules raises the minimum required version of each module to the
@@ -131,6 +134,17 @@ func requireModules(fixed map[string]string) error {
 
 func goModTidy() error {
 	return run(exec.Command("go", "mod", "tidy"))
+}
+
+// goModVendor re-syncs the vendor directory, if there is one. `go mod tidy`
+// leaves it alone, and a vendor directory that disagrees with go.mod fails every
+// later go command with "inconsistent vendoring". The go command keys vendoring
+// off vendor/modules.txt, so that file is what decides whether to re-run.
+func goModVendor() error {
+	if _, err := os.Stat("vendor/modules.txt"); err != nil {
+		return nil
+	}
+	return run(exec.Command("go", "mod", "vendor"))
 }
 
 // goModEditGo bumps the go directive to version (e.g. "1.21.9"), then drops any

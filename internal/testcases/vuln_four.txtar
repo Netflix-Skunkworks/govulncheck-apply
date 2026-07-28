@@ -1,5 +1,8 @@
-description: One module with four distinct called x/ vulnerabilities.
-
+# A main module with one called vulnerability in each of four golang.org/x
+# dependencies.
+#
+# The four upgrades also raise the indirect requirement on golang.org/x/sys to
+# v0.15.0, which golang.org/x/crypto v0.17.0 requires.
 -- go.mod --
 module example.com/vulnfour
 

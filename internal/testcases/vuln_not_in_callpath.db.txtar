@@ -1,6 +1,5 @@
-A minimal govulncheck DB reporting only GO-2021-0113 (the
-golang.org/x/text/language.Parse vuln, fixed in v0.3.7). Here x/text is
-required but blank-imported, so the vulnerable symbol is never called.
+# A minimal govulncheck DB reporting only GO-2021-0113 (the
+# golang.org/x/text/language.Parse vuln, fixed in v0.3.7).
 -- index/db.json --
 {"modified":"2026-07-22T00:00:00Z"}
 -- index/modules.json --

@@ -28,9 +28,9 @@ import (
 // wantDiffFile is the txtar entry holding the expected `git diff`.
 const wantDiffFile = "want_diff.txt"
 
-// TestVulncheck runs the vulncheck bot's script (from vulncheck_adhoc.json)
-// against each txtar repository in testcases/ and asserts the resulting
-// `git diff` matches the archive's want_diff.txt.
+// TestVulncheck pipes govulncheck into govulncheck-apply against each txtar
+// repository in testcases/ and asserts the resulting `git diff` matches the
+// archive's want_diff.txt.
 func TestVulncheck(t *testing.T) {
 	cases, err := filepath.Glob("testcases/*.txtar")
 	if err != nil {
@@ -42,9 +42,9 @@ func TestVulncheck(t *testing.T) {
 		t.Fatal("no testcases/*.txtar files found")
 	}
 
-	// Build the applier and govulncheck once, reused by every case.
-	applier := filepath.Join(t.TempDir(), "govulncheck-apply")
-	run(t, ".", "go", "build", "-o", applier, "github.com/netflix-skunkworks/govulncheck-apply")
+	// Build govulncheck-apply and govulncheck once, reused by every case.
+	govulncheckApply := filepath.Join(t.TempDir(), "govulncheck-apply")
+	run(t, ".", "go", "build", "-o", govulncheckApply, "github.com/netflix-skunkworks/govulncheck-apply")
 	govulncheck := buildGovulncheck(t)
 
 	for _, path := range cases {
@@ -55,7 +55,8 @@ func TestVulncheck(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if directives(archive.Comment)["skip"] == "true" {
+			d := directives(t, archive.Comment)
+			if d["skip"] == "true" {
 				t.Skip("disabled by 'skip: true' directive")
 			}
 
@@ -78,13 +79,14 @@ func TestVulncheck(t *testing.T) {
 			gitInit(t, repo)
 
 			// Scan against the vendored DB for deterministic findings; a
-			// gotoolchain directive pins the toolchain the stdlib is analyzed against.
+			// gotoolchain directive sets the toolchain whose standard library
+			// govulncheck analyzes.
 			db := loadDB(t, path)
-			toolchain := directives(archive.Comment)["gotoolchain"]
+			toolchain := d["gotoolchain"]
 			if toolchain == "" {
 				toolchain = "local"
 			}
-			scan := "GOTOOLCHAIN=" + toolchain + " '" + govulncheck + "' -db file://" + db + " -json ./... | '" + applier + "'"
+			scan := "GOTOOLCHAIN=" + toolchain + " '" + govulncheck + "' -db file://" + db + " -json ./... | '" + govulncheckApply + "'"
 			run(t, repo, "bash", "-c", scan)
 
 			run(t, repo, "git", "add", "-A")
@@ -97,23 +99,18 @@ func TestVulncheck(t *testing.T) {
 	}
 }
 
-// directives parses the leading "key: value" lines of a txtar archive comment
-// (e.g. description and skip). Parsing stops at the first blank or
-// non-directive line, so the free-form description prose below is ignored.
-func directives(comment []byte) map[string]string {
-	m := map[string]string{}
-	for line := range strings.SplitSeq(string(comment), "\n") {
-		key, val, ok := strings.Cut(line, ":")
-		if !ok || strings.ContainsAny(strings.TrimSpace(key), " \t") {
-			break
-		}
-		m[strings.TrimSpace(key)] = strings.TrimSpace(val)
+// directives is Directives with the parse error reported as a test failure.
+func directives(t *testing.T, comment []byte) map[string]string {
+	t.Helper()
+	d, err := Directives(comment)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return m
+	return d
 }
 
 // buildGovulncheck installs govulncheck once and returns the binary path. It's
-// prebuilt (not `go run @version`) so a case can pin GOTOOLCHAIN for the stdlib
+// prebuilt (not `go run @version`) so a case can set GOTOOLCHAIN for the stdlib
 // analysis without forcing that toolchain to also compile govulncheck.
 func buildGovulncheck(t *testing.T) string {
 	t.Helper()

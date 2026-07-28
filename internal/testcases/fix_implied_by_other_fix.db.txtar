@@ -1,6 +1,6 @@
-A minimal govulncheck DB reporting GO-2023-2402 (called
-golang.org/x/crypto/ssh.NewClientConn, fixed in v0.17.0) and GO-2026-5942 (called
-golang.org/x/net/dns/dnsmessage.Message.Unpack, fixed in v0.56.0).
+# A minimal govulncheck DB reporting GO-2023-2402 (called
+# golang.org/x/crypto/ssh.NewClientConn, fixed in v0.17.0) and GO-2026-5942
+# (called golang.org/x/net/dns/dnsmessage.Message.Unpack, fixed in v0.56.0).
 -- index/db.json --
 {"modified":"2026-07-22T00:00:00Z"}
 -- index/modules.json --

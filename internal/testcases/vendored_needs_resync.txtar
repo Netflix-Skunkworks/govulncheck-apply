@@ -1,0 +1,641 @@
+# The main module has a vendor directory, so the upgrade has to be followed by
+# `go mod vendor`.
+#
+# The fixture is self-consistent at HEAD: the require directive and
+# vendor/modules.txt both record mousetrap v1.0.1. Rewriting go.mod and go.sum to
+# v1.1.0 leaves modules.txt at v1.0.1, and `go mod tidy` does not re-sync the
+# vendor directory, so every later go command fails:
+#
+#	go: inconsistent vendoring in /...:
+#		github.com/inconshreveable/mousetrap@v1.1.0: is explicitly required in go.mod, but not marked as explicit in vendor/modules.txt
+#		github.com/inconshreveable/mousetrap@v1.0.1: is marked as explicit in vendor/modules.txt, but not explicitly required in go.mod
+#
+# Nothing reports that at the time: the breakage surfaces one govulncheck run
+# later, as a failure to load packages. That is how corp/sbos-nflx-system-agent
+# and corp/wb-nflx-envvars broke. So govulncheck-apply runs `go mod vendor` after
+# `go mod tidy` when vendor/modules.txt is present, and want_diff.txt covers the
+# re-synced vendor directory as well as go.mod and go.sum.
+#
+# GO-TEST-0001 is synthetic. Every other case uses a real entry from the Go
+# vulnerability database, but this one needs a dependency small enough to vendor
+# into a fixture, and no such module has one -- mousetrap is 3 files where x/text
+# is 424K. The module and both versions are real; only the vulnerability is
+# invented.
+-- go.mod --
+module example.com/s
+
+go 1.25.0
+
+require github.com/inconshreveable/mousetrap v1.0.1
+-- go.sum --
+github.com/inconshreveable/mousetrap v1.0.1 h1:U3uMjPSQEBMNp1lFxmllqCPM6P5u/Xq7Pgzkat/bFNc=
+github.com/inconshreveable/mousetrap v1.0.1/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
+-- main.go --
+package main
+
+import "github.com/inconshreveable/mousetrap"
+
+func main() {
+	_ = mousetrap.StartedByExplorer()
+}
+-- vendor/github.com/inconshreveable/mousetrap/LICENSE --
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright 2022 Alan Shreve (@inconshreveable)
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-- vendor/github.com/inconshreveable/mousetrap/README.md --
+# mousetrap
+
+mousetrap is a tiny library that answers a single question.
+
+On a Windows machine, was the process invoked by someone double clicking on
+the executable file while browsing in explorer?
+
+### Motivation
+
+Windows developers unfamiliar with command line tools will often "double-click"
+the executable for a tool. Because most CLI tools print the help and then exit
+when invoked without arguments, this is often very frustrating for those users.
+
+mousetrap provides a way to detect these invocations so that you can provide
+more helpful behavior and instructions on how to run the CLI tool. To see what
+this looks like, both from an organizational and a technical perspective, see
+https://inconshreveable.com/09-09-2014/sweat-the-small-stuff/
+
+### The interface
+
+The library exposes a single interface:
+
+    func StartedByExplorer() (bool)
+-- vendor/github.com/inconshreveable/mousetrap/trap_others.go --
+// +build !windows
+
+package mousetrap
+
+// StartedByExplorer returns true if the program was invoked by the user
+// double-clicking on the executable from explorer.exe
+//
+// It is conservative and returns false if any of the internal calls fail.
+// It does not guarantee that the program was run from a terminal. It only can tell you
+// whether it was launched from explorer.exe
+//
+// On non-Windows platforms, it always returns false.
+func StartedByExplorer() bool {
+	return false
+}
+-- vendor/github.com/inconshreveable/mousetrap/trap_windows.go --
+// +build windows
+// +build !go1.4
+
+package mousetrap
+
+import (
+	"fmt"
+	"os"
+	"syscall"
+	"unsafe"
+)
+
+const (
+	// defined by the Win32 API
+	th32cs_snapprocess uintptr = 0x2
+)
+
+var (
+	kernel                   = syscall.MustLoadDLL("kernel32.dll")
+	CreateToolhelp32Snapshot = kernel.MustFindProc("CreateToolhelp32Snapshot")
+	Process32First           = kernel.MustFindProc("Process32FirstW")
+	Process32Next            = kernel.MustFindProc("Process32NextW")
+)
+
+// ProcessEntry32 structure defined by the Win32 API
+type processEntry32 struct {
+	dwSize              uint32
+	cntUsage            uint32
+	th32ProcessID       uint32
+	th32DefaultHeapID   int
+	th32ModuleID        uint32
+	cntThreads          uint32
+	th32ParentProcessID uint32
+	pcPriClassBase      int32
+	dwFlags             uint32
+	szExeFile           [syscall.MAX_PATH]uint16
+}
+
+func getProcessEntry(pid int) (pe *processEntry32, err error) {
+	snapshot, _, e1 := CreateToolhelp32Snapshot.Call(th32cs_snapprocess, uintptr(0))
+	if snapshot == uintptr(syscall.InvalidHandle) {
+		err = fmt.Errorf("CreateToolhelp32Snapshot: %v", e1)
+		return
+	}
+	defer syscall.CloseHandle(syscall.Handle(snapshot))
+
+	var processEntry processEntry32
+	processEntry.dwSize = uint32(unsafe.Sizeof(processEntry))
+	ok, _, e1 := Process32First.Call(snapshot, uintptr(unsafe.Pointer(&processEntry)))
+	if ok == 0 {
+		err = fmt.Errorf("Process32First: %v", e1)
+		return
+	}
+
+	for {
+		if processEntry.th32ProcessID == uint32(pid) {
+			pe = &processEntry
+			return
+		}
+
+		ok, _, e1 = Process32Next.Call(snapshot, uintptr(unsafe.Pointer(&processEntry)))
+		if ok == 0 {
+			err = fmt.Errorf("Process32Next: %v", e1)
+			return
+		}
+	}
+}
+
+func getppid() (pid int, err error) {
+	pe, err := getProcessEntry(os.Getpid())
+	if err != nil {
+		return
+	}
+
+	pid = int(pe.th32ParentProcessID)
+	return
+}
+
+// StartedByExplorer returns true if the program was invoked by the user double-clicking
+// on the executable from explorer.exe
+//
+// It is conservative and returns false if any of the internal calls fail.
+// It does not guarantee that the program was run from a terminal. It only can tell you
+// whether it was launched from explorer.exe
+func StartedByExplorer() bool {
+	ppid, err := getppid()
+	if err != nil {
+		return false
+	}
+
+	pe, err := getProcessEntry(ppid)
+	if err != nil {
+		return false
+	}
+
+	name := syscall.UTF16ToString(pe.szExeFile[:])
+	return name == "explorer.exe"
+}
+-- vendor/github.com/inconshreveable/mousetrap/trap_windows_1.4.go --
+// +build windows
+// +build go1.4
+
+package mousetrap
+
+import (
+	"os"
+	"syscall"
+	"unsafe"
+)
+
+func getProcessEntry(pid int) (*syscall.ProcessEntry32, error) {
+	snapshot, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer syscall.CloseHandle(snapshot)
+	var procEntry syscall.ProcessEntry32
+	procEntry.Size = uint32(unsafe.Sizeof(procEntry))
+	if err = syscall.Process32First(snapshot, &procEntry); err != nil {
+		return nil, err
+	}
+	for {
+		if procEntry.ProcessID == uint32(pid) {
+			return &procEntry, nil
+		}
+		err = syscall.Process32Next(snapshot, &procEntry)
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
+// StartedByExplorer returns true if the program was invoked by the user double-clicking
+// on the executable from explorer.exe
+//
+// It is conservative and returns false if any of the internal calls fail.
+// It does not guarantee that the program was run from a terminal. It only can tell you
+// whether it was launched from explorer.exe
+func StartedByExplorer() bool {
+	pe, err := getProcessEntry(os.Getppid())
+	if err != nil {
+		return false
+	}
+	return "explorer.exe" == syscall.UTF16ToString(pe.ExeFile[:])
+}
+-- vendor/modules.txt --
+# github.com/inconshreveable/mousetrap v1.0.1
+## explicit; go 1.18
+github.com/inconshreveable/mousetrap
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index f224f67..43a1fb9 100644
+--- a/go.mod
++++ b/go.mod
+@@ -2,4 +2,4 @@ module example.com/s
+ 
+ go 1.25.0
+ 
+-require github.com/inconshreveable/mousetrap v1.0.1
++require github.com/inconshreveable/mousetrap v1.1.0
+diff --git a/go.sum b/go.sum
+index 7c66306..d9cc9f5 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,2 +1,2 @@
+-github.com/inconshreveable/mousetrap v1.0.1 h1:U3uMjPSQEBMNp1lFxmllqCPM6P5u/Xq7Pgzkat/bFNc=
+-github.com/inconshreveable/mousetrap v1.0.1/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
++github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
++github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
+diff --git a/vendor/github.com/inconshreveable/mousetrap/trap_others.go b/vendor/github.com/inconshreveable/mousetrap/trap_others.go
+index 9d2d8a4..06a91f0 100644
+--- a/vendor/github.com/inconshreveable/mousetrap/trap_others.go
++++ b/vendor/github.com/inconshreveable/mousetrap/trap_others.go
+@@ -1,3 +1,4 @@
++//go:build !windows
+ // +build !windows
+ 
+ package mousetrap
+diff --git a/vendor/github.com/inconshreveable/mousetrap/trap_windows.go b/vendor/github.com/inconshreveable/mousetrap/trap_windows.go
+index 336142a..0c56880 100644
+--- a/vendor/github.com/inconshreveable/mousetrap/trap_windows.go
++++ b/vendor/github.com/inconshreveable/mousetrap/trap_windows.go
+@@ -1,81 +1,32 @@
+-// +build windows
+-// +build !go1.4
+-
+ package mousetrap
+ 
+ import (
+-	"fmt"
+-	"os"
+ 	"syscall"
+ 	"unsafe"
+ )
+ 
+-const (
+-	// defined by the Win32 API
+-	th32cs_snapprocess uintptr = 0x2
+-)
+-
+-var (
+-	kernel                   = syscall.MustLoadDLL("kernel32.dll")
+-	CreateToolhelp32Snapshot = kernel.MustFindProc("CreateToolhelp32Snapshot")
+-	Process32First           = kernel.MustFindProc("Process32FirstW")
+-	Process32Next            = kernel.MustFindProc("Process32NextW")
+-)
+-
+-// ProcessEntry32 structure defined by the Win32 API
+-type processEntry32 struct {
+-	dwSize              uint32
+-	cntUsage            uint32
+-	th32ProcessID       uint32
+-	th32DefaultHeapID   int
+-	th32ModuleID        uint32
+-	cntThreads          uint32
+-	th32ParentProcessID uint32
+-	pcPriClassBase      int32
+-	dwFlags             uint32
+-	szExeFile           [syscall.MAX_PATH]uint16
+-}
+-
+-func getProcessEntry(pid int) (pe *processEntry32, err error) {
+-	snapshot, _, e1 := CreateToolhelp32Snapshot.Call(th32cs_snapprocess, uintptr(0))
+-	if snapshot == uintptr(syscall.InvalidHandle) {
+-		err = fmt.Errorf("CreateToolhelp32Snapshot: %v", e1)
+-		return
++func getProcessEntry(pid int) (*syscall.ProcessEntry32, error) {
++	snapshot, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
++	if err != nil {
++		return nil, err
+ 	}
+-	defer syscall.CloseHandle(syscall.Handle(snapshot))
+-
+-	var processEntry processEntry32
+-	processEntry.dwSize = uint32(unsafe.Sizeof(processEntry))
+-	ok, _, e1 := Process32First.Call(snapshot, uintptr(unsafe.Pointer(&processEntry)))
+-	if ok == 0 {
+-		err = fmt.Errorf("Process32First: %v", e1)
+-		return
++	defer syscall.CloseHandle(snapshot)
++	var procEntry syscall.ProcessEntry32
++	procEntry.Size = uint32(unsafe.Sizeof(procEntry))
++	if err = syscall.Process32First(snapshot, &procEntry); err != nil {
++		return nil, err
+ 	}
+-
+ 	for {
+-		if processEntry.th32ProcessID == uint32(pid) {
+-			pe = &processEntry
+-			return
++		if procEntry.ProcessID == uint32(pid) {
++			return &procEntry, nil
+ 		}
+-
+-		ok, _, e1 = Process32Next.Call(snapshot, uintptr(unsafe.Pointer(&processEntry)))
+-		if ok == 0 {
+-			err = fmt.Errorf("Process32Next: %v", e1)
+-			return
++		err = syscall.Process32Next(snapshot, &procEntry)
++		if err != nil {
++			return nil, err
+ 		}
+ 	}
+ }
+ 
+-func getppid() (pid int, err error) {
+-	pe, err := getProcessEntry(os.Getpid())
+-	if err != nil {
+-		return
+-	}
+-
+-	pid = int(pe.th32ParentProcessID)
+-	return
+-}
+-
+ // StartedByExplorer returns true if the program was invoked by the user double-clicking
+ // on the executable from explorer.exe
+ //
+@@ -83,16 +34,9 @@ func getppid() (pid int, err error) {
+ // It does not guarantee that the program was run from a terminal. It only can tell you
+ // whether it was launched from explorer.exe
+ func StartedByExplorer() bool {
+-	ppid, err := getppid()
++	pe, err := getProcessEntry(syscall.Getppid())
+ 	if err != nil {
+ 		return false
+ 	}
+-
+-	pe, err := getProcessEntry(ppid)
+-	if err != nil {
+-		return false
+-	}
+-
+-	name := syscall.UTF16ToString(pe.szExeFile[:])
+-	return name == "explorer.exe"
++	return "explorer.exe" == syscall.UTF16ToString(pe.ExeFile[:])
+ }
+diff --git a/vendor/github.com/inconshreveable/mousetrap/trap_windows_1.4.go b/vendor/github.com/inconshreveable/mousetrap/trap_windows_1.4.go
+deleted file mode 100644
+index 9a28e57..0000000
+--- a/vendor/github.com/inconshreveable/mousetrap/trap_windows_1.4.go
++++ /dev/null
+@@ -1,46 +0,0 @@
+-// +build windows
+-// +build go1.4
+-
+-package mousetrap
+-
+-import (
+-	"os"
+-	"syscall"
+-	"unsafe"
+-)
+-
+-func getProcessEntry(pid int) (*syscall.ProcessEntry32, error) {
+-	snapshot, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
+-	if err != nil {
+-		return nil, err
+-	}
+-	defer syscall.CloseHandle(snapshot)
+-	var procEntry syscall.ProcessEntry32
+-	procEntry.Size = uint32(unsafe.Sizeof(procEntry))
+-	if err = syscall.Process32First(snapshot, &procEntry); err != nil {
+-		return nil, err
+-	}
+-	for {
+-		if procEntry.ProcessID == uint32(pid) {
+-			return &procEntry, nil
+-		}
+-		err = syscall.Process32Next(snapshot, &procEntry)
+-		if err != nil {
+-			return nil, err
+-		}
+-	}
+-}
+-
+-// StartedByExplorer returns true if the program was invoked by the user double-clicking
+-// on the executable from explorer.exe
+-//
+-// It is conservative and returns false if any of the internal calls fail.
+-// It does not guarantee that the program was run from a terminal. It only can tell you
+-// whether it was launched from explorer.exe
+-func StartedByExplorer() bool {
+-	pe, err := getProcessEntry(os.Getppid())
+-	if err != nil {
+-		return false
+-	}
+-	return "explorer.exe" == syscall.UTF16ToString(pe.ExeFile[:])
+-}
+diff --git a/vendor/modules.txt b/vendor/modules.txt
+index a7d5579..d450eb1 100644
+--- a/vendor/modules.txt
++++ b/vendor/modules.txt
+@@ -1,3 +1,3 @@
+-# github.com/inconshreveable/mousetrap v1.0.1
++# github.com/inconshreveable/mousetrap v1.1.0
+ ## explicit; go 1.18
+ github.com/inconshreveable/mousetrap

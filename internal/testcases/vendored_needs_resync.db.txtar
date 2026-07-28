@@ -1,0 +1,19 @@
+# A minimal govulncheck DB reporting only GO-TEST-0001, a synthetic entry against
+# github.com/inconshreveable/mousetrap (fixed in v1.1.0). It is not in the Go
+# vulnerability database; the sibling .txtar explains why.
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"github.com/inconshreveable/mousetrap","vulns":[{"id":"GO-TEST-0001","modified":"2026-07-22T00:00:00Z","fixed":"1.1.0"}]}]
+-- ID/GO-TEST-0001.json --
+{
+  "id": "GO-TEST-0001",
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "github.com/inconshreveable/mousetrap", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "1.1.0"}]}],
+      "ecosystem_specific": {"imports": [{"path": "github.com/inconshreveable/mousetrap", "symbols": ["StartedByExplorer"]}]}
+    }
+  ]
+}
