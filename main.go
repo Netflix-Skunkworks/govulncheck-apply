@@ -62,7 +62,7 @@ func readFixes() (fixes, error) {
 	if err != nil {
 		return fixes{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return parse(f)
 }
 
