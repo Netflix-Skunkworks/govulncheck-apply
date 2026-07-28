@@ -16,10 +16,16 @@
 // applies the identified fixes to the `go.mod`s in your working directory.
 //
 //	govulncheck -json ./... | go tool github.com/netflix-skunkworks/govulncheck-apply
+//
+// Or read the stream from a file, which keeps govulncheck's own exit status:
+//
+//	govulncheck -json ./... > vulns.json
+//	go tool github.com/netflix-skunkworks/govulncheck-apply -f vulns.json
 package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"maps"
@@ -32,8 +38,11 @@ import (
 	"golang.org/x/mod/semver"
 )
 
+var input = flag.String("f", "", "read the govulncheck -json stream from this `file` instead of stdin. Useful when you want govulncheck's own failures to surface: bash takes a pipeline's exit status from the last command, so piping govulncheck into govulncheck-apply loses a govulncheck failure unless you turn on set -o pipefail, which you may not want over a whole script")
+
 func main() {
-	fixes, err := parse(os.Stdin)
+	flag.Parse()
+	fixes, err := readFixes()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -42,6 +51,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// readFixes parses the stream named by -f, or stdin if the flag is unset.
+func readFixes() (fixes, error) {
+	if *input == "" {
+		return parse(os.Stdin)
+	}
+	f, err := os.Open(*input)
+	if err != nil {
+		return fixes{}, err
+	}
+	defer f.Close()
+	return parse(f)
 }
 
 // fixes is a remediation: the version to upgrade each module to, and the go

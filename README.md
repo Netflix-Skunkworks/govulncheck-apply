@@ -10,6 +10,13 @@ directory, it is re-synced with `go mod vendor`.
     go install github.com/netflix-skunkworks/govulncheck-apply@latest
     govulncheck -json ./... | govulncheck-apply
 
+`-f` reads the stream from a file instead of stdin. Bash takes a pipeline's exit
+status from the last command, so the pipeline above hides a govulncheck failure
+unless `set -o pipefail` is on, which you may not want over a whole script:
+
+    govulncheck -json ./... > vulns.json
+    govulncheck-apply -f vulns.json
+
 ## Test case format
 
 Each `internal/testcases/foo.txtar` is a repository to scan, plus a
