@@ -51,11 +51,11 @@ func run() error {
 
 	archive, err := txtar.ParseFile(base + ".txtar")
 	if err != nil {
-		return fmt.Errorf("parse %s.txtar: %w", *testcase, err)
+		return fmt.Errorf("parse %s.txtar: %v", *testcase, err)
 	}
 	dbArchive, err := txtar.ParseFile(base + ".db.txtar")
 	if err != nil {
-		return fmt.Errorf("parse %s.db.txtar: %w", *testcase, err)
+		return fmt.Errorf("parse %s.db.txtar: %v", *testcase, err)
 	}
 
 	dir, err := os.MkdirTemp("", "repro-"+*testcase+"-")
@@ -68,11 +68,11 @@ func run() error {
 		return f.Name == "want_diff.txt"
 	})
 	if err := extract(archive, dir); err != nil {
-		return fmt.Errorf("extract repo: %w", err)
+		return fmt.Errorf("extract repo: %v", err)
 	}
 	db := filepath.Join(dir, "govulncheck-db")
 	if err := extract(dbArchive, db); err != nil {
-		return fmt.Errorf("extract db: %w", err)
+		return fmt.Errorf("extract db: %v", err)
 	}
 
 	// Prebuild both tools into dir. govulncheck is built with the local
@@ -89,7 +89,7 @@ func run() error {
 
 	d, err := internal.Directives(archive.Comment)
 	if err != nil {
-		return fmt.Errorf("%s.txtar: %w", *testcase, err)
+		return fmt.Errorf("%s.txtar: %v", *testcase, err)
 	}
 	var toolchain string
 	if gt := d["gotoolchain"]; gt != "" {
@@ -121,7 +121,7 @@ func goTool(env []string, args ...string) error {
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go %s: %w", strings.Join(args, " "), err)
+		return fmt.Errorf("go %s: %v", strings.Join(args, " "), err)
 	}
 	return nil
 }

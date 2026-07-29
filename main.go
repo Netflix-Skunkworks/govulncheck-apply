@@ -74,9 +74,7 @@ type fixes struct {
 	goVersion string            // fixed version for stdlib vulns, e.g. "v1.21.9"
 }
 
-// parse reads a `govulncheck -json` stream and returns the remediation. It fixes
-// every reported vulnerability that has a known fix, whether or not the
-// vulnerable symbol is actually called.
+// parse reads a `govulncheck -json` stream and returns the reported fixes.
 func parse(r io.Reader) (fixes, error) {
 	dec := json.NewDecoder(r)
 	fix := fixes{modules: map[string]string{}}
@@ -93,7 +91,7 @@ func parse(r io.Reader) (fixes, error) {
 			if decoded {
 				return fixes{}, err
 			}
-			return fixes{}, fmt.Errorf("input could not be parsed. did you pass `govulncheck -json` output to this program? the error was: %w", err)
+			return fixes{}, fmt.Errorf("input could not be parsed. did you pass `govulncheck -json` output to this program? the error was: %v", err)
 		}
 		decoded = true
 
@@ -143,9 +141,7 @@ func apply(fix fixes) error {
 
 // requireModules raises the minimum required version of each module to the
 // version that fixes it. A require directive is a minimum, so MVS selects the
-// higher of that and whatever the rest of the graph already requires: a module
-// another fix carries past its own needs no special handling, and nothing is
-// downgraded.
+// higher of that and whatever the rest of the graph already requires.
 func requireModules(fixed map[string]string) error {
 	args := []string{"mod", "edit"}
 	for _, mod := range slices.Sorted(maps.Keys(fixed)) {
@@ -224,7 +220,7 @@ type replace struct {
 func readModEdit() (modEdit, error) {
 	out, err := exec.Command("go", "mod", "edit", "-json").Output()
 	if err != nil {
-		return modEdit{}, fmt.Errorf("go mod edit -json: %w", err)
+		return modEdit{}, fmt.Errorf("go mod edit -json: %v", err)
 	}
 	var m modEdit
 	if err := json.Unmarshal(out, &m); err != nil {
@@ -237,7 +233,7 @@ func readModEdit() (modEdit, error) {
 func run(cmd *exec.Cmd) error {
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %w", strings.Join(cmd.Args, " "), err)
+		return fmt.Errorf("%s: %v", strings.Join(cmd.Args, " "), err)
 	}
 	return nil
 }
