@@ -17,7 +17,7 @@
 # lets `go mod tidy` resolve them: x/crypto lands at v0.53.0, above its own fixed
 # version, so GO-2023-2402 is remediated too.
 #
-# Reduced from ghe/corp/ngo, where x/net v0.56.0 and golang.org/x/sys v0.44.0
+# Reduced from a repository where x/net v0.56.0 and golang.org/x/sys v0.44.0
 # collided the same way.
 -- go.mod --
 module example.com/impliedfix

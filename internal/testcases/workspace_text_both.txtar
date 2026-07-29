@@ -1,11 +1,15 @@
-# A nested module requires the same vulnerable x/text as the main module, but
-# `./...` doesn't match packages in a nested module, so only the main module is
-# remediated.
+# Both workspace modules require the same vulnerable x/text.
 #
-# sub/ is its own module, so govulncheck reports GO-2021-0113 for main.go's call
-# to language.Parse and not for sub/lib.go's. govulncheck-apply edits the go.mod
-# in its working directory, leaving sub/go.mod and sub/go.sum at v0.3.5;
-# remediating sub/ takes a separate govulncheck run from inside it.
+# The go.work variant of multimod_text_both. The root example.com/foo and
+# example.com/foo/sub under sub/ each require golang.org/x/text v0.3.5 and call
+# language.Parse, which GO-2021-0113 affects; the fix is v0.3.7. go.work's use
+# directive names both.
+#
+# Scanning with GOWORK=off scans each module against its own go.mod, so each
+# require directive moves v0.3.5 -> v0.3.7. With the workspace active, minimal
+# version selection would give both main modules one selected version of x/text,
+# so once the first module required v0.3.7 the second would scan clean and keep
+# v0.3.5.
 -- go.mod --
 module example.com/foo
 
@@ -22,6 +26,8 @@ import (
 )
 
 func main() {
+	// language.Parse is the vulnerable symbol (GO-2021-0113); printing its
+	// results directly keeps it on the call path so govulncheck flags it.
 	fmt.Println(language.Parse("en-US"))
 }
 -- go.sum --
@@ -43,6 +49,7 @@ import (
 	"golang.org/x/text/language"
 )
 
+// ParseTag calls language.Parse, the vulnerable symbol in x/text v0.3.5.
 func ParseTag(s string) {
 	fmt.Println(language.Parse(s))
 }
@@ -50,6 +57,13 @@ func ParseTag(s string) {
 golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
 golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
 golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+-- go.work --
+go 1.25.0
+
+use (
+	.
+	./sub
+)
 -- want_diff.txt --
 diff --git a/go.mod b/go.mod
 index 4fde206..c86cdab 100644
@@ -65,6 +79,26 @@ diff --git a/go.sum b/go.sum
 index bbd33e8..1f78e03 100644
 --- a/go.sum
 +++ b/go.sum
+@@ -1,3 +1,2 @@
+-golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+-golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+-golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
++golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
++golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
+diff --git a/sub/go.mod b/sub/go.mod
+index e3397d8..75da157 100644
+--- a/sub/go.mod
++++ b/sub/go.mod
+@@ -2,4 +2,4 @@ module example.com/foo/sub
+ 
+ go 1.25.0
+ 
+-require golang.org/x/text v0.3.5
++require golang.org/x/text v0.3.7
+diff --git a/sub/go.sum b/sub/go.sum
+index bbd33e8..1f78e03 100644
+--- a/sub/go.sum
++++ b/sub/go.sum
 @@ -1,3 +1,2 @@
 -golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
 -golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=

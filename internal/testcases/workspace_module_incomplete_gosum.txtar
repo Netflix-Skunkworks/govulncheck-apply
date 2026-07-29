@@ -1,0 +1,65 @@
+# The incomplete-go.sum variant of workspace_text_child.
+#
+# sub/go.sum is empty: `go work sync` keeps the hashes in go.work.sum, so every
+# workspace-mode command works. Scanning with GOWORK=off takes go.work.sum away,
+# and govulncheck cannot load the module:
+#
+# 	sub.go:3:8: missing go.sum entry for module providing package
+# 	golang.org/x/text/language
+#
+# It exits non-zero, so the module would be skipped and nothing in it scanned. The
+# scan therefore also sets -mod=mod, which lets the go command write the missing
+# hashes, so sub/ is scanned and its require directive moves v0.3.5 -> v0.3.7.
+#
+# go.work.sum is left naming v0.3.5. Workspace-mode commands find the v0.3.7
+# hashes in sub/go.sum, so it does not need to be rewritten.
+-- go.mod --
+module example.com/foo
+
+go 1.25.0
+-- go.work --
+go 1.25.0
+
+use (
+	.
+	./sub
+)
+-- go.work.sum --
+golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+-- main.go --
+package main
+
+func main() {}
+-- sub/go.mod --
+module example.com/foo/sub
+
+go 1.25.0
+
+require golang.org/x/text v0.3.5
+-- sub/go.sum --
+-- sub/sub.go --
+package sub
+
+import "golang.org/x/text/language"
+
+// Parse reaches language.Parse, the symbol GO-2021-0113 affects.
+func Parse(s string) (language.Tag, error) { return language.Parse(s) }
+-- want_diff.txt --
+diff --git a/sub/go.mod b/sub/go.mod
+index e3397d8..75da157 100644
+--- a/sub/go.mod
++++ b/sub/go.mod
+@@ -2,4 +2,4 @@ module example.com/foo/sub
+ 
+ go 1.25.0
+ 
+-require golang.org/x/text v0.3.5
++require golang.org/x/text v0.3.7
+diff --git a/sub/go.sum b/sub/go.sum
+index e69de29..1f78e03 100644
+--- a/sub/go.sum
++++ b/sub/go.sum
+@@ -0,0 +1,2 @@
++golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
++golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=

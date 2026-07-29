@@ -10,11 +10,13 @@
 #		github.com/inconshreveable/mousetrap@v1.1.0: is explicitly required in go.mod, but not marked as explicit in vendor/modules.txt
 #		github.com/inconshreveable/mousetrap@v1.0.1: is marked as explicit in vendor/modules.txt, but not explicitly required in go.mod
 #
-# Nothing reports that at the time: the breakage surfaces one govulncheck run
-# later, as a failure to load packages. That is how corp/sbos-nflx-system-agent
-# and corp/wb-nflx-envvars broke. So govulncheck-apply runs `go mod vendor` after
-# `go mod tidy` when vendor/modules.txt is present, and want_diff.txt covers the
-# re-synced vendor directory as well as go.mod and go.sum.
+# Nothing reports that at the time: the breakage surfaces as a failure to load
+# packages, the next time anything builds the module. So govulncheck-apply runs
+# `go mod vendor` after `go mod tidy` when vendor/modules.txt is present, and
+# want_diff.txt covers the re-synced vendor directory as well as go.mod and go.sum.
+#
+# The rescanning does not catch it either: the scan sets -mod=mod, under which the
+# go command ignores the vendor directory entirely.
 #
 # GO-TEST-0001 is synthetic. Every other case uses a real entry from the Go
 # vulnerability database, but this one needs a dependency small enough to vendor

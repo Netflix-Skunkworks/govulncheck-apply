@@ -17,6 +17,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -30,10 +31,7 @@ import (
 	"github.com/netflix-skunkworks/govulncheck-apply/internal"
 )
 
-// govulncheck is the same version the test harness scans with.
-const govulncheck = "golang.org/x/vuln/cmd/govulncheck@v1.6.0"
-
-var testcase = flag.String("testcase", "", "ex: vuln_xtext")
+var testcase = flag.String("testcase", "", "`name` of the scenario under internal/testcases, e.g. vuln_xtext")
 
 func main() {
 	flag.Parse()
@@ -45,17 +43,18 @@ func main() {
 
 func run() error {
 	if *testcase == "" {
-		return fmt.Errorf("no --testcase passed")
+		return errors.New("no -testcase passed")
 	}
 	base := filepath.Join("internal", "testcases", *testcase)
 
+	// txtar.ParseFile's error already names the file it could not read.
 	archive, err := txtar.ParseFile(base + ".txtar")
 	if err != nil {
-		return fmt.Errorf("parse %s.txtar: %v", *testcase, err)
+		return err
 	}
 	dbArchive, err := txtar.ParseFile(base + ".db.txtar")
 	if err != nil {
-		return fmt.Errorf("parse %s.db.txtar: %v", *testcase, err)
+		return err
 	}
 
 	dir, err := os.MkdirTemp("", "repro-"+*testcase+"-")
@@ -63,9 +62,10 @@ func run() error {
 		return err
 	}
 
-	// want_diff.txt is the harness's expected output, not part of the scenario.
+	// The harness's want_ expectations are not part of the scenario, and would
+	// otherwise be left lying in the repository being scanned.
 	archive.Files = slices.DeleteFunc(archive.Files, func(f txtar.File) bool {
-		return f.Name == "want_diff.txt"
+		return strings.HasPrefix(f.Name, "want_")
 	})
 	if err := extract(archive, dir); err != nil {
 		return fmt.Errorf("extract repo: %v", err)
@@ -75,15 +75,9 @@ func run() error {
 		return fmt.Errorf("extract db: %v", err)
 	}
 
-	// Prebuild both tools into dir. govulncheck is built with the local
-	// toolchain so a case's GOTOOLCHAIN applies only to the stdlib analysis, not
-	// to building govulncheck itself (which needs a recent Go). govulncheck-apply
-	// must be a binary because it can't be `go run` from inside the scenario's
-	// module.
-	if err := goTool([]string{"GOTOOLCHAIN=local"}, "build", "-o", filepath.Join(dir, "govulncheck-apply"), "github.com/netflix-skunkworks/govulncheck-apply"); err != nil {
-		return err
-	}
-	if err := goTool([]string{"GOTOOLCHAIN=local", "GOFLAGS=", "GOBIN=" + dir}, "install", govulncheck); err != nil {
+	// govulncheck-apply has to be a binary because it can't be `go run` from
+	// inside the scenario's module. It installs its own govulncheck.
+	if err := runGo([]string{"GOTOOLCHAIN=local"}, "build", "-o", filepath.Join(dir, "govulncheck-apply"), "github.com/netflix-skunkworks/govulncheck-apply"); err != nil {
 		return err
 	}
 
@@ -91,19 +85,17 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("%s.txtar: %v", *testcase, err)
 	}
-	var toolchain string
-	if gt := d["gotoolchain"]; gt != "" {
-		toolchain = "GOTOOLCHAIN=" + gt + " "
-	}
 	if desc := internal.Description(archive.Comment); desc != "" {
 		fmt.Printf("\n%s\n", desc)
 	}
+	// The toolchain comes from the same place the harness gets it, so that the
+	// scenario reproduces under the toolchain the case is tested with.
 	fmt.Printf(`
 Scenario ready at %[1]s
 
   cd %[1]s
-  %[2]s./govulncheck -db file://%[3]s -json ./... | ./govulncheck-apply
-`, dir, toolchain, db)
+  GOTOOLCHAIN=%[2]s ./govulncheck-apply -db file://%[3]s
+`, dir, internal.Toolchain(d), db)
 	return nil
 }
 
@@ -115,8 +107,8 @@ func extract(archive *txtar.Archive, dir string) error {
 	return os.CopyFS(dir, fsys)
 }
 
-// goTool runs `go args...` with extra environment, streaming output to stderr.
-func goTool(env []string, args ...string) error {
+// runGo runs `go args...` with extra environment, streaming output to stderr.
+func runGo(env []string, args ...string) error {
 	cmd := exec.Command("go", args...)
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr

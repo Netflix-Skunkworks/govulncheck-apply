@@ -1,0 +1,66 @@
+# A workspace module importing its sibling, which GOWORK=off severs.
+#
+# example.com/app imports example.com/app/lib through go.work's use directive, and
+# the workspace build succeeds. Scanning with GOWORK=off leaves that import
+# unsatisfied, because nothing but go.work ties the two together:
+#
+# 	main.go:6:2: no required module provides package example.com/app/lib
+#
+# Against a proxy that publishes untagged modules as pseudo-versions, a repository
+# shaped like this resolves the sibling instead of failing outright -- to whatever
+# was published last, which can be old enough to no longer type-check against the
+# rest of the repository. The unresolvable variant here stands in for that:
+# reproducing a stale published version would need a real module with two
+# published versions.
+#
+# GOWORK=off is what lets each module be scanned against its own go.mod, which
+# workspace_text_both and workspace_goversion_both depend on, so dropping it is no
+# answer. -mod=mod does not help here either, unlike
+# workspace_module_incomplete_gosum: the sibling has no version to resolve to at
+# all.
+#
+# Left disabled: a module that cannot be built on its own is out of scope. Every
+# module is expected to compile without the workspace, so it is the repository
+# that needs changing here.
+
+skip: true
+-- go.mod --
+module example.com/app
+
+go 1.21.0
+
+require golang.org/x/text v0.3.6 // indirect
+-- go.sum --
+golang.org/x/text v0.3.6 h1:aRYxNxv6iGQlyVaZmk6ZgYEDa+Jg18DxebPSrd6bg1M=
+golang.org/x/text v0.3.6/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+-- go.work --
+go 1.21.0
+
+use (
+	.
+	./lib
+)
+-- lib/go.mod --
+module example.com/app/lib
+
+go 1.21.0
+-- lib/lib.go --
+package lib
+
+// Greet is imported by the main module through the workspace.
+func Greet() string { return "hi" }
+-- main.go --
+package main
+
+import (
+	"golang.org/x/text/language"
+
+	"example.com/app/lib"
+)
+
+// example.com/app/lib resolves only through go.work's use directive: there is
+// no replace directive and no published version.
+func main() {
+	_, _ = language.Parse(lib.Greet())
+}

@@ -1,0 +1,19 @@
+# A minimal govulncheck DB reporting only GO-2021-0113 (the called
+# golang.org/x/text/language.Parse vuln, fixed in v0.3.7).
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"golang.org/x/text","vulns":[{"id":"GO-2021-0113","modified":"2026-07-22T00:00:00Z","fixed":"0.3.7"}]}]
+-- ID/GO-2021-0113.json --
+{
+  "id": "GO-2021-0113",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2021-0113"},
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "golang.org/x/text", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "0.3.7"}]}],
+      "ecosystem_specific": {"imports": [{"path": "golang.org/x/text/language", "symbols": ["Parse"]}]}
+    }
+  ]
+}

@@ -40,6 +40,18 @@ func Directives(comment []byte) (map[string]string, error) {
 	return m, nil
 }
 
+// Toolchain returns the GOTOOLCHAIN a case runs under. A gotoolchain directive
+// names the toolchain whose standard library govulncheck analyzes, as a floor
+// rather than a pin: a standard-library fix raises a go directive past it, and a
+// repository can hold modules on several go directives, so +auto lets each module
+// upgrade to its own.
+func Toolchain(directives map[string]string) string {
+	if gt := directives["gotoolchain"]; gt != "" {
+		return gt + "+auto"
+	}
+	return "local"
+}
+
 // Description returns the case's `#` comments with the markers stripped, for the
 // repro command to print.
 func Description(comment []byte) string {
