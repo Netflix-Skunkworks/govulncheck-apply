@@ -40,11 +40,16 @@ to carry into a pull request description. Nothing is printed when there was
 nothing to report, so a caller can test the output for emptiness.
 
 ```markdown
-| Module | Advisory | Dependency | Fixed in | Reached from |
-| --- | --- | --- | --- | --- |
-| `.` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
-| `sub` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "Improper header parsing in net/http") | net/http@go1.21.0 → go1.21.9 | go1.21.9 | server.go:31:9 sub.Serve → http.Get |
+| Advisory | Dependency | Fixed in | Reached from |
+| --- | --- | --- | --- |
+| [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 → v0.3.7 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
+| [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "Improper header parsing in net/http") | net/http@go1.21.0 → go1.21.9 | go1.21.9 | sub/server.go:31:9 sub.Serve → http.Get |
 ```
+
+There is a row per advisory per module that reported it, and no column saying
+which module that was: almost every repository has one, and a column of repeated
+`.` earns no room. A call site names a file, which places the row where a
+repository has more than one module.
 
 The advisory's own prose is the link's title, rather than a column of its own: a
 sentence per row made the table wider than a pull request shows without scrolling.

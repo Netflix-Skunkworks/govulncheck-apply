@@ -33,6 +33,6 @@ index 9b981c3..d7e9510 100644
 -go 1.21.0
 +go 1.21.9
 -- want_report.md --
-| Module | Advisory | Dependency | Fixed in | Reached from |
-| --- | --- | --- | --- | --- |
-| `.` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "HTTP/2 rapid reset can cause excessive work in net/http") | net/http@go1.21.0 → go1.21.9 | go1.21.9 | main.go:6:10 foo.main → http.Get |
+| Advisory | Dependency | Fixed in | Reached from |
+| --- | --- | --- | --- |
+| [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "HTTP/2 rapid reset can cause excessive work in net/http") | net/http@go1.21.0 → go1.21.9 | go1.21.9 | main.go:6:10 foo.main → http.Get |

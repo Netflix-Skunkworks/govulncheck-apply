@@ -46,13 +46,11 @@ func TestReport(t *testing.T) {
 				Position: &token.Position{Filename: "main.go", Line: 10, Column: 28}},
 		},
 	}
-	// The same advisory renders the same way whichever module reports it, so the
-	// row is written once with the directory left to fill in.
-	rowFor := func(dir string) string {
-		return "| `" + dir + "` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 " +
-			`"Panic in golang.org/x/text/language")` + " | golang.org/x/text@v0.3.5 | v0.3.7 | " +
-			"main.go:10:28 foo.main → language.Parse |"
-	}
+	// Which module reported an advisory is not in the row, so the same advisory
+	// from two modules renders the same way twice.
+	calledRow := "| [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 " +
+		`"Panic in golang.org/x/text/language")` + " | golang.org/x/text@v0.3.5 | v0.3.7 | " +
+		"main.go:10:28 foo.main → language.Parse |"
 	stdlibVuln := vuln{
 		osv:     "GO-2024-2687",
 		url:     "https://pkg.go.dev/vuln/GO-2024-2687",
@@ -74,12 +72,12 @@ func TestReport(t *testing.T) {
 		{
 			name:    "a fixed advisory, with where it was reached from",
 			modules: []moduleReport{{dir: ".", vulns: []vuln{called}}},
-			want:    table(rowFor(".")),
+			want:    table(calledRow),
 		},
 		{
 			name:    "the standard library reads as a toolchain name, not a semver",
 			modules: []moduleReport{{dir: ".", vulns: []vuln{stdlibVuln}}},
-			want: table("| `.` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687) | " +
+			want: table("| [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687) | " +
 				"net/http@go1.21.0 | go1.21.9 | not called |"),
 		},
 		{
@@ -89,8 +87,8 @@ func TestReport(t *testing.T) {
 				{osv: "GO-2", module: "example.com/b", found: "v1.0.0", fixedIn: "v1.1.0", stillReported: true},
 			}}},
 			want: table(
-				"| `.` | GO-1 | example.com/a@v1.0.0 | no fix published | not called |",
-				"| `.` | GO-2 | example.com/b@v1.0.0 | v1.1.0 (fix did not take) | not called |"),
+				"| GO-1 | example.com/a@v1.0.0 | no fix published | not called |",
+				"| GO-2 | example.com/b@v1.0.0 | v1.1.0 (fix did not take) | not called |"),
 		},
 		{
 			// The version is formatted before it is decorated, or a standard-library
@@ -99,7 +97,7 @@ func TestReport(t *testing.T) {
 			modules: []moduleReport{{dir: ".", vulns: []vuln{
 				{osv: "GO-3", module: stdlib, found: "v1.21.0", stillReported: true},
 			}}},
-			want: table("| `.` | GO-3 | stdlib@go1.21.0 | no fix published | not called |"),
+			want: table("| GO-3 | stdlib@go1.21.0 | no fix published | not called |"),
 		},
 		{
 			// A module-granularity finding names no package, so there is only the
@@ -108,7 +106,7 @@ func TestReport(t *testing.T) {
 			modules: []moduleReport{{dir: ".", vulns: []vuln{
 				{osv: "GO-6", module: stdlib, found: "v1.21.0", fixedIn: "v1.21.9"},
 			}}},
-			want: table("| `.` | GO-6 | stdlib@go1.21.0 | go1.21.9 | not called |"),
+			want: table("| GO-6 | stdlib@go1.21.0 | go1.21.9 | not called |"),
 		},
 		{
 			// Minimal version selection can land above the version that fixes the
@@ -118,16 +116,16 @@ func TestReport(t *testing.T) {
 				osv: "GO-5", module: "golang.org/x/crypto", found: "v0.48.0",
 				selected: "v0.53.0", fixedIn: "v0.52.0",
 			}}}},
-			want: table("| `.` | GO-5 | golang.org/x/crypto@v0.48.0 → v0.53.0 | v0.52.0 | not called |"),
+			want: table("| GO-5 | golang.org/x/crypto@v0.48.0 → v0.53.0 | v0.52.0 | not called |"),
 		},
 		{
-			name: "one row per module, and the modules that failed listed after",
+			name: "a row per module reporting it, and the modules that failed after",
 			modules: []moduleReport{
 				{dir: ".", vulns: []vuln{called}},
 				{dir: "broken", err: "govulncheck: exit status 1"},
 				{dir: "sub", vulns: []vuln{called}},
 			},
-			want: table(rowFor("."), rowFor("sub")) +
+			want: table(calledRow, calledRow) +
 				"\n" + failureList + "- `broken`: govulncheck: exit status 1\n",
 		},
 		{
@@ -136,7 +134,7 @@ func TestReport(t *testing.T) {
 				osv: "GO-4", url: "https://example.com/GO-4", summary: `A "quoted" phrase`,
 				module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0",
 			}}}},
-			want: table("| `.` | [GO-4](https://example.com/GO-4 \"A 'quoted' phrase\") | " +
+			want: table("| [GO-4](https://example.com/GO-4 \"A 'quoted' phrase\") | " +
 				"example.com/a@v1.0.0 | v1.1.0 | not called |"),
 		},
 		{
