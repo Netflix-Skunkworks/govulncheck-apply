@@ -96,7 +96,7 @@ index bbd33e8..1f78e03 100644
 +golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
 +golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
 -- want_report.md --
-| Module | Advisory | Dependency | Fixed in | Reached from |
-| --- | --- | --- | --- | --- |
-| `.` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 → v0.3.7 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
-| `sub` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 → v0.3.7 | v0.3.7 | lib.go:11:28 sub.ParseTag → language.Parse |
+| Advisory | Dependency | Fixed in | Reached from |
+| --- | --- | --- | --- |
+| [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 → v0.3.7 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
+| [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 → v0.3.7 | v0.3.7 | lib.go:11:28 sub.ParseTag → language.Parse |

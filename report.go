@@ -74,8 +74,8 @@ func (m moduleReport) withError(err error) moduleReport {
 // advisory's prose is not a column of its own: a sentence per row made the table
 // wider than a pull request shows without scrolling, so it rides along as the
 // link's title instead.
-const tableHeader = "| Module | Advisory | Dependency | Fixed in | Reached from |\n" +
-	"| --- | --- | --- | --- | --- |\n"
+const tableHeader = "| Advisory | Dependency | Fixed in | Reached from |\n" +
+	"| --- | --- | --- | --- |\n"
 
 // report writes every module's outcome as one markdown table, for a pull request
 // description or a build log to carry as it is. Nothing is written when there is
@@ -92,7 +92,7 @@ func report(w io.Writer, modules []moduleReport) error {
 			if table.Len() == 0 {
 				table.WriteString(tableHeader)
 			}
-			table.WriteString(row(m.dir, v))
+			table.WriteString(row(v))
 		}
 	}
 	if table.Len() == 0 && failures.Len() == 0 {
@@ -109,10 +109,15 @@ func report(w io.Writer, modules []moduleReport) error {
 	return err
 }
 
-// row renders one advisory in one module. The version that fixes it carries what
-// became of it, so that the exception is stated where a reader is already looking
-// for the version rather than in a column of repeated "fixed".
-func row(dir string, v vuln) string {
+// row renders one advisory. Which module of the repository reported it is not a
+// column: almost every repository has one, and a column of repeated "." earns no
+// room. A call site names a file, which places the row in a repository that has
+// more than one.
+//
+// The version that fixes the advisory carries what became of it, so that the
+// exception is stated where a reader is already looking for the version rather
+// than in a column of repeated "fixed".
+func row(v vuln) string {
 	fixedIn := toolchainName(v.module, v.fixedIn)
 	switch {
 	case v.fixedIn == "":
@@ -124,8 +129,8 @@ func row(dir string, v vuln) string {
 	if reached == "" {
 		reached = "not called"
 	}
-	return fmt.Sprintf("| `%s` | %s | %s | %s | %s |\n",
-		cell(dir), advisory(v), cell(vulnerableModule(v)+"@"+upgrade(v)),
+	return fmt.Sprintf("| %s | %s | %s | %s |\n",
+		advisory(v), cell(vulnerableModule(v)+"@"+upgrade(v)),
 		cell(fixedIn), cell(reached))
 }
 
