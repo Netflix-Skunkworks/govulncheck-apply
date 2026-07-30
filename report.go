@@ -34,7 +34,7 @@ const stdlib = "stdlib"
 type vuln struct {
 	osv           string
 	url           string
-	summary       string
+	summary       string  // the advisory's own one-line prose, if it publishes one
 	module        string  // the vulnerable module's path, or stdlib
 	found         string  // the version of it the first scan found
 	fixedIn       string  // the version that fixes it, empty if none is published
@@ -68,9 +68,12 @@ func (m moduleReport) withError(err error) moduleReport {
 	return m
 }
 
-// tableHeader is written once, before the first row there is to write.
-const tableHeader = "| Module | Advisory | Summary | Found in | Fixed in | Reached from |\n" +
-	"| --- | --- | --- | --- | --- | --- |\n"
+// tableHeader is written once, before the first row there is to write. The
+// advisory's prose is not a column of its own: a sentence per row made the table
+// wider than a pull request shows without scrolling, so it rides along as the
+// link's title instead.
+const tableHeader = "| Module | Advisory | Found in | Fixed in | Reached from |\n" +
+	"| --- | --- | --- | --- | --- |\n"
 
 // report writes every module's outcome as one markdown table, for a pull request
 // description or a build log to carry as it is. Nothing is written when there is
@@ -119,8 +122,8 @@ func row(dir string, v vuln) string {
 	if reached == "" {
 		reached = "not called"
 	}
-	return fmt.Sprintf("| `%s` | %s | %s | %s | %s | %s |\n",
-		cell(dir), advisory(v), cell(v.summary),
+	return fmt.Sprintf("| `%s` | %s | %s | %s | %s |\n",
+		cell(dir), advisory(v),
 		cell(v.module+"@"+toolchainName(v.module, v.found)),
 		cell(fixedIn), cell(reached))
 }
@@ -135,12 +138,19 @@ func toolchainName(module, v string) string {
 	return "go" + strings.TrimPrefix(v, "v")
 }
 
-// advisory links the OSV id to the entry the database gave a URL for.
+// advisory links the OSV id to the entry the database gave a URL for, titled with
+// the advisory's own prose so that a reader can have it without the table growing
+// a column for it.
 func advisory(v vuln) string {
 	if v.url == "" {
 		return cell(v.osv)
 	}
-	return "[" + cell(v.osv) + "](" + cell(v.url) + ")"
+	link := "[" + cell(v.osv) + "](" + cell(v.url)
+	if v.summary != "" {
+		// A title is quoted, so the quotes in it cannot be.
+		link += ` "` + strings.ReplaceAll(cell(v.summary), `"`, "'") + `"`
+	}
+	return link + ")"
 }
 
 // cell makes text safe to sit in a markdown table: a pipe would start a column,
