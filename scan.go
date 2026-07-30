@@ -118,9 +118,8 @@ func fullVersion(v string) string {
 
 // scan runs govulncheck over the module in dir, against the vulnerability
 // database at db, or govulncheck's own default if db is empty. It returns the
-// fixes reported, and every OSV id seen mapped to whether the database
-// published a fix for it.
-func scan(dir, govulncheck, db string) (fixes, map[string]bool, error) {
+// fixes reported, and what was reported about each advisory, keyed by OSV id.
+func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 	// Pass -test so that a vulnerability only a test reaches is still reported.
 	args := []string{"-test", "-json"}
 	if db != "" {
@@ -144,36 +143,67 @@ func scan(dir, govulncheck, db string) (fixes, map[string]bool, error) {
 }
 
 // parse reads a `govulncheck -json` stream.
-func parse(r io.Reader) (fixes, map[string]bool, error) {
+func parse(r io.Reader) (fixes, map[string]vuln, error) {
 	dec := json.NewDecoder(r)
 	fix := fixes{modules: map[string]string{}}
-	reported := map[string]bool{}
+	reported := map[string]*vuln{}
+	advisories := map[string]*osv{}
 	for {
 		var msg message
 		err := dec.Decode(&msg)
 		if errors.Is(err, io.EOF) {
-			return fix, reported, nil
+			return fix, merge(reported, advisories), nil
 		}
 		if err != nil {
 			return fixes{}, nil, err
+		}
+		if msg.OSV != nil {
+			advisories[msg.OSV.ID] = msg.OSV
 		}
 
 		f := msg.Finding
 		if f == nil || len(f.Trace) == 0 {
 			continue
 		}
-		reported[f.OSV] = reported[f.OSV] || f.FixedVersion != ""
-		vuln := f.Trace[0]
-		if vuln.Module == "" || f.FixedVersion == "" {
+		vulnerable := f.Trace[0]
+		v := reported[f.OSV]
+		if v == nil {
+			v = &vuln{osv: f.OSV, module: vulnerable.Module, found: vulnerable.Version}
+			reported[f.OSV] = v
+		}
+		if f.FixedVersion != "" {
+			v.fixedIn = f.FixedVersion
+		}
+		// Only the called-function granularity carries a trace worth rendering, and
+		// one example of it is enough, as in govulncheck's own report.
+		if len(f.Trace) > 1 && v.trace == nil {
+			v.trace = f.Trace
+		}
+		if vulnerable.Module == "" || f.FixedVersion == "" {
 			continue
 		}
 		// A module can have several vulns with different fixes; keep the highest.
-		if vuln.Module == "stdlib" {
+		if vulnerable.Module == stdlib {
 			if semver.Compare(f.FixedVersion, fix.goVersion) > 0 {
 				fix.goVersion = f.FixedVersion
 			}
-		} else if semver.Compare(f.FixedVersion, fix.modules[vuln.Module]) > 0 {
-			fix.modules[vuln.Module] = f.FixedVersion
+		} else if semver.Compare(f.FixedVersion, fix.modules[vulnerable.Module]) > 0 {
+			fix.modules[vulnerable.Module] = f.FixedVersion
 		}
 	}
+}
+
+// merge folds each advisory's own prose and link into what was reported about it.
+// The two arrive in either order, which is why they are collected apart and only
+// brought together once the stream ends.
+func merge(reported map[string]*vuln, advisories map[string]*osv) map[string]vuln {
+	out := make(map[string]vuln, len(reported))
+	for id, v := range reported {
+		if a := advisories[id]; a != nil {
+			v.summary = a.Summary
+			v.url = a.DatabaseSpecific.URL
+		}
+		out[id] = *v
+	}
+	return out
 }

@@ -20,13 +20,13 @@
 //	go install github.com/netflix-skunkworks/govulncheck-apply@latest
 //	govulncheck-apply
 //
-// A summary of the OSV ids it fixed, and of those it had to leave, is printed to
-// stdout as JSON.
+// What it found and what became of each advisory is printed to stdout as one
+// markdown table, ready to carry into a pull request description. Nothing is
+// printed when there was nothing to report.
 package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -85,62 +85,34 @@ func remediate() error {
 
 	// Search for an apply fixes. Record fixes as we go, so that we can report
 	// them to the user.
-	var report summary
+	var modules []moduleReport
 	for _, dir := range dirs {
-		report.Modules = append(report.Modules, remediateModule(dir, govulncheck, *dbURL))
+		modules = append(modules, remediateModule(dir, govulncheck, *dbURL))
 	}
 
 	// If there is a `go.work`, then run `go work use` to bump its `go`
 	// directive to whatever the `go.mod`s use after apply the remediations.
+	//
+	// Its failure is returned only after the report is written: the fixes are on
+	// disk either way, and whatever reports the run has to know what landed.
 	workUse := goWorkUse()
 
-	out := json.NewEncoder(os.Stdout)
-	out.SetIndent("", "  ")
-	if err := out.Encode(report); err != nil {
+	if err := report(os.Stdout, modules); err != nil {
 		return err
 	}
 	return workUse
 }
-
-// summary is what govulncheck-apply prints on stdout for whatever reports the
-// run, such as a pull request description or a build log.
-type summary struct {
-	Modules []moduleSummary `json:"modules"`
-}
-
-// moduleSummary is one module's outcome. A module that could not be scanned, or
-// that never settled, carries an error and no ids: a run that stopped partway
-// cannot say which ids it fixed.
-type moduleSummary struct {
-	Dir     string    `json:"dir"`
-	Fixed   []string  `json:"fixed,omitempty"`
-	Unfixed []unfixed `json:"unfixed,omitempty"`
-	Error   string    `json:"error,omitempty"`
-}
-
-// unfixed is a vulnerability the last pass reported and could not clear.
-type unfixed struct {
-	OSV    string `json:"osv"`
-	Reason string `json:"reason"`
-}
-
-// The reasons a vulnerability can be left behind: either the database publishes
-// no fixed version, or raising the requirement to it did not shake the
-// vulnerable version out of the build list, which usually means a replace
-// directive is holding it there.
-const (
-	noFix       = "no fix published"
-	fixNotTaken = "fix did not take"
-)
 
 // remediateModule scans the module in dir with govulncheck and applies the
 // fixes it identifies. It does so iteratively until a pass leaves go.mod and
 // go.sum alone.
 //
 // A module still changing after maxPasses is reported as an error.
-func remediateModule(dir, govulncheck, db string) moduleSummary {
-	result := moduleSummary{Dir: filepath.ToSlash(dir)}
-	seen := map[string]bool{}
+func remediateModule(dir, govulncheck, db string) moduleReport {
+	result := moduleReport{dir: filepath.ToSlash(dir)}
+	// A fix can introduce a vulnerability of its own, so the report covers every
+	// advisory any pass reported, described as the pass that first saw it did.
+	seen := map[string]vuln{}
 	before, err := modFiles(dir)
 	if err != nil {
 		return result.withError(err)
@@ -150,8 +122,10 @@ func remediateModule(dir, govulncheck, db string) moduleSummary {
 		if err != nil {
 			return result.withError(err)
 		}
-		for osv := range reported {
-			seen[osv] = true
+		for osv, v := range reported {
+			if _, ok := seen[osv]; !ok {
+				seen[osv] = v
+			}
 		}
 		if err := apply(dir, fix); err != nil {
 			return result.withError(err)
@@ -161,7 +135,7 @@ func remediateModule(dir, govulncheck, db string) moduleSummary {
 			return result.withError(err)
 		}
 		if bytes.Equal(before, after) {
-			result.Fixed, result.Unfixed = classify(seen, reported)
+			result.vulns = classify(seen, reported)
 			return result
 		}
 		before = after
@@ -169,33 +143,17 @@ func remediateModule(dir, govulncheck, db string) moduleSummary {
 	return result.withError(fmt.Errorf("still changing after %d passes", maxPasses))
 }
 
-// classify sorts every OSV id a module's passes reported into the ones the last
-// pass no longer reported and the ones it could not clear. seen is every id
-// reported at all; remaining maps the ids the last pass still reported to whether
-// the database publishes a fix for them.
-func classify(seen, remaining map[string]bool) ([]string, []unfixed) {
-	var fixed []string
-	var left []unfixed
+// classify returns every advisory a module's passes reported, in id order, each
+// marked with whether the last pass reported it again. That, with the version
+// that fixes it, is everything the report needs to say what became of it.
+func classify(seen, remaining map[string]vuln) []vuln {
+	var out []vuln
 	for _, osv := range slices.Sorted(maps.Keys(seen)) {
-		fixable, stillReported := remaining[osv]
-		switch {
-		case !stillReported:
-			fixed = append(fixed, osv)
-		case fixable:
-			left = append(left, unfixed{OSV: osv, Reason: fixNotTaken})
-		default:
-			left = append(left, unfixed{OSV: osv, Reason: noFix})
-		}
+		v := seen[osv]
+		_, v.stillReported = remaining[osv]
+		out = append(out, v)
 	}
-	return fixed, left
-}
-
-// withError records why a module was given up on. One module that cannot be
-// remediated must not stop the others, so this is reported rather than returned.
-func (m moduleSummary) withError(err error) moduleSummary {
-	fmt.Fprintf(os.Stderr, "giving up on %s: %v\n", m.Dir, err)
-	m.Error = err.Error()
-	return m
+	return out
 }
 
 // modules lists the directories under root holding a go.mod, outermost first.
@@ -225,7 +183,7 @@ func modules(root string) ([]string, error) {
 		return nil, err
 	}
 	// A directory sorts before everything under it, so this puts each module
-	// ahead of the modules nested in it, and keeps the summary's order stable.
+	// ahead of the modules nested in it, and keeps the report's row order stable.
 	slices.Sort(dirs)
 	return dirs, nil
 }

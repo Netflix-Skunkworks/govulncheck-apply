@@ -35,22 +35,27 @@ mirror or an offline copy. It defaults to `govulncheck`'s own default,
 
 ## Output
 
-A summary of every module is printed to stdout as JSON. `unfixed` distinguishes a
-vulnerability the database publishes no fix for from one where the fix was
-applied and the scan still reported it, which a `replace` directive can cause.
+Every advisory any pass reported is printed to stdout as one markdown table, ready
+to carry into a pull request description. Nothing is printed when there was
+nothing to report, so a caller can test the output for emptiness.
 
-```json
-{
-  "modules": [
-    { "dir": ".", "fixed": ["GO-2021-0113"] },
-    { "dir": "sub", "unfixed": [{ "osv": "GO-2020-0017", "reason": "no fix published" }] },
-    { "dir": "broken", "error": "govulncheck: exit status 1" }
-  ]
-}
+```markdown
+| Module | Advisory | Summary | Found in | Fixed in | Reached from |
+| --- | --- | --- | --- | --- | --- |
+| `.` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113) | Out-of-bounds read in golang.org/x/text | golang.org/x/text@v0.3.5 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
+| `sub` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687) | Improper header parsing in net/http | stdlib@go1.21.0 | go1.21.9 | server.go:31:9 sub.Serve → http.Get |
 ```
 
-A module that cannot be scanned does not stop the others being remediated: its
-error is reported here and on stderr, and the run still exits 0, because a failure
+An advisory a fix introduced is in there too, described as the pass that first saw
+it did, which is why "Found in" can name a version this run had itself selected.
+"Reached from" is the call that reaches the vulnerable symbol, or `not called` for
+one that is only in the build list. "Fixed in" carries what became of it: the
+version that fixes it, `no fix published`, or that version and `(fix did not
+take)` when it was still reported after the upgrade, which a `replace` directive
+can cause.
+
+A module that cannot be scanned does not stop the others being remediated: it is
+listed under the table and on stderr, and the run still exits 0, because a failure
 would be read as "nothing changed" by whatever commits the result. A failure
 outside any one module — an unreadable directory, or `govulncheck` itself failing
 to install — does exit non-zero.
@@ -60,7 +65,7 @@ to install — does exit non-zero.
 Each `internal/testcases/foo.txtar` is a repository to scan, plus a
 `want_diff.txt` holding the `git diff` the run is expected to produce. Its
 sibling `foo.db.txtar` is the vulnerability database to scan against. A case may
-also carry a `want_summary.json` holding the summary the run should print.
+also carry a `want_report.md` holding the table the run should print.
 
 In the archive comment, `#` lines describe the case and mean nothing to the
 harness. Every other non-blank line is a `key: value` directive:

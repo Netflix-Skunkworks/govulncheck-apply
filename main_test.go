@@ -17,61 +17,53 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"reflect"
-	"slices"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestClassify(t *testing.T) {
+	fixable := vuln{osv: "GO-1", fixedIn: "v1.1.0"}
+	unfixable := vuln{osv: "GO-2"}
 	for _, tt := range []struct {
 		name            string
-		seen, remaining map[string]bool
-		wantFixed       []string
-		wantUnfixed     []unfixed
+		seen, remaining map[string]vuln
+		want            []vuln
 	}{
 		{
-			// Whether a fix was published does not matter once the id is gone:
-			// go mod tidy can drop the dependency carrying it outright.
-			name:      "an id the last pass no longer reports is fixed",
-			seen:      map[string]bool{"GO-1": true},
-			remaining: map[string]bool{},
-			wantFixed: []string{"GO-1"},
+			// Whether a fix was published does not matter once the advisory is
+			// gone: go mod tidy can drop the dependency carrying it outright.
+			name: "an advisory the last pass no longer reports is fixed",
+			seen: map[string]vuln{"GO-1": fixable, "GO-2": unfixable},
+			want: []vuln{fixable, unfixable},
 		},
 		{
-			name:        "an id still reported with a published fix did not take",
-			seen:        map[string]bool{"GO-1": true},
-			remaining:   map[string]bool{"GO-1": true},
-			wantUnfixed: []unfixed{{OSV: "GO-1", Reason: fixNotTaken}},
+			name:      "an advisory still reported is marked as such",
+			seen:      map[string]vuln{"GO-1": fixable},
+			remaining: map[string]vuln{"GO-1": fixable},
+			want:      []vuln{{osv: "GO-1", fixedIn: "v1.1.0", stillReported: true}},
 		},
 		{
-			name:        "an id still reported with no published fix is unfixable",
-			seen:        map[string]bool{"GO-1": false},
-			remaining:   map[string]bool{"GO-1": false},
-			wantUnfixed: []unfixed{{OSV: "GO-1", Reason: noFix}},
+			name:      "an advisory with no published fix is marked the same way",
+			seen:      map[string]vuln{"GO-2": unfixable},
+			remaining: map[string]vuln{"GO-2": unfixable},
+			want:      []vuln{{osv: "GO-2", stillReported: true}},
 		},
 		{
-			name: "ids are sorted, whichever outcome they land in",
-			seen: map[string]bool{"GO-3": true, "GO-1": true, "GO-2": false, "GO-4": true},
-			remaining: map[string]bool{
-				"GO-2": false,
-				"GO-4": true,
-			},
-			wantFixed:   []string{"GO-1", "GO-3"},
-			wantUnfixed: []unfixed{{OSV: "GO-2", Reason: noFix}, {OSV: "GO-4", Reason: fixNotTaken}},
+			name:      "advisories come back in id order, whichever outcome they land in",
+			seen:      map[string]vuln{"GO-2": unfixable, "GO-1": fixable},
+			remaining: map[string]vuln{"GO-2": unfixable},
+			want:      []vuln{fixable, {osv: "GO-2", stillReported: true}},
 		},
 		{
-			name:      "a module with no findings reports nothing",
-			seen:      map[string]bool{},
-			remaining: map[string]bool{},
+			name: "a module with no findings reports nothing",
+			seen: map[string]vuln{},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			fixed, unfixed := classify(tt.seen, tt.remaining)
-			if !slices.Equal(fixed, tt.wantFixed) {
-				t.Errorf("classify(%v, %v) fixed = %q, want %q", tt.seen, tt.remaining, fixed, tt.wantFixed)
-			}
-			if !reflect.DeepEqual(unfixed, tt.wantUnfixed) {
-				t.Errorf("classify(%v, %v) unfixed = %+v, want %+v", tt.seen, tt.remaining, unfixed, tt.wantUnfixed)
+			got := classify(tt.seen, tt.remaining)
+			if diff := cmp.Diff(got, tt.want, unexported); diff != "" {
+				t.Errorf("classify(%+v, %+v) differs (-got +want):\n%s", tt.seen, tt.remaining, diff)
 			}
 		})
 	}
@@ -104,7 +96,7 @@ func TestModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{dir, filepath.Join(dir, "deep", "nested"), filepath.Join(dir, "sub")}
-	if !slices.Equal(got, want) {
-		t.Errorf("modules() over %q = %q, want %q", layout, got, want)
+	if diff := cmp.Diff(got, want); diff != "" {
+		t.Errorf("modules() over %q differs (-got +want):\n%s", layout, diff)
 	}
 }

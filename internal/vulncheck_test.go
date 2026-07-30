@@ -27,10 +27,10 @@ import (
 )
 
 // These name the txtar entries holding a case's expectations. Every case has a
-// want_diff.txt; want_summary.json is optional.
+// want_diff.txt; want_report.md is optional.
 const (
-	wantDiffFile    = "want_diff.txt"
-	wantSummaryFile = "want_summary.json"
+	wantDiffFile   = "want_diff.txt"
+	wantReportFile = "want_report.md"
 )
 
 // TestVulncheck runs govulncheck-apply against each txtar repository in
@@ -75,12 +75,12 @@ func TestVulncheck(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s has no %s", path, wantDiffFile)
 			}
-			wantSummary, hasSummary := take(archive, wantSummaryFile)
+			wantReport, hasReport := take(archive, wantReportFile)
 			// An empty want_diff.txt is how a case says the run must change
 			// nothing, which on its own would also pass if the run did nothing at
-			// all. Such a case has to assert the summary too.
-			if wantDiff == "" && !hasSummary {
-				t.Fatalf("%s asserts nothing: %s is empty and there is no %s", path, wantDiffFile, wantSummaryFile)
+			// all. Such a case has to assert the report too.
+			if wantDiff == "" && !hasReport {
+				t.Fatalf("%s asserts nothing: %s is empty and there is no %s", path, wantDiffFile, wantReportFile)
 			}
 
 			fsys, err := txtar.FS(archive)
@@ -97,15 +97,15 @@ func TestVulncheck(t *testing.T) {
 			// Scanning the vendored DB keeps findings deterministic and offline.
 			env := []string{"GOTOOLCHAIN=" + Toolchain(d)}
 			db := "file://" + loadDB(t, path)
-			gotSummary := runEnv(t, repo, env, govulncheckApply, "-db", db)
+			gotReport := runEnv(t, repo, env, govulncheckApply, "-db", db)
 
 			run(t, repo, "git", "add", "-A")
 			gotDiff := run(t, repo, "git", "-c", "core.pager=cat", "diff", "--cached")
 			if gotDiff != wantDiff {
 				t.Errorf("git diff --cached =\n%s\nwant:\n%s", gotDiff, wantDiff)
 			}
-			if hasSummary && gotSummary != wantSummary {
-				t.Errorf("summary =\n%s\nwant:\n%s", gotSummary, wantSummary)
+			if hasReport && gotReport != wantReport {
+				t.Errorf("report =\n%s\nwant:\n%s", gotReport, wantReport)
 			}
 		})
 	}
