@@ -174,6 +174,11 @@ func parse(r io.Reader) (fixes, map[string]vuln, error) {
 		if f.FixedVersion != "" {
 			v.fixedIn = f.FixedVersion
 		}
+		// Only the package and called-function granularities name a package, and
+		// the module-granularity finding can arrive first.
+		if v.pkg == "" {
+			v.pkg = vulnerable.Package
+		}
 		// Only the called-function granularity carries a trace worth rendering, and
 		// one example of it is enough, as in govulncheck's own report.
 		if len(f.Trace) > 1 && v.trace == nil {

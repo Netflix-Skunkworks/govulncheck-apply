@@ -36,6 +36,7 @@ type vuln struct {
 	url           string
 	summary       string  // the advisory's own one-line prose, if it publishes one
 	module        string  // the vulnerable module's path, or stdlib
+	pkg           string  // the vulnerable package, where a finding named one
 	found         string  // the version of it the first scan found
 	selected      string  // the version the run left selected, empty if unchanged
 	fixedIn       string  // the version that fixes it, empty if none is published
@@ -124,8 +125,18 @@ func row(dir string, v vuln) string {
 		reached = "not called"
 	}
 	return fmt.Sprintf("| `%s` | %s | %s | %s | %s |\n",
-		cell(dir), advisory(v), cell(v.module+"@"+upgrade(v)),
+		cell(dir), advisory(v), cell(vulnerableModule(v)+"@"+upgrade(v)),
 		cell(fixedIn), cell(reached))
+}
+
+// vulnerableModule names what carries the vulnerability. For the standard library
+// that is a package, as govulncheck's own report has it: crypto/tls tells a reader
+// what to look at, where stdlib only tells them which version moved.
+func vulnerableModule(v vuln) string {
+	if v.module == stdlib && v.pkg != "" {
+		return v.pkg
+	}
+	return v.module
 }
 
 // upgrade renders what happened to the version of the vulnerable module: the one
