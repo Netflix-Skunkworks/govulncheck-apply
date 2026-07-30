@@ -40,19 +40,25 @@ to carry into a pull request description. Nothing is printed when there was
 nothing to report, so a caller can test the output for emptiness.
 
 ```markdown
-| Module | Advisory | Summary | Found in | Fixed in | Reached from |
-| --- | --- | --- | --- | --- | --- |
-| `.` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113) | Out-of-bounds read in golang.org/x/text | golang.org/x/text@v0.3.5 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
-| `sub` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687) | Improper header parsing in net/http | stdlib@go1.21.0 | go1.21.9 | server.go:31:9 sub.Serve → http.Get |
+| Module | Advisory | Found in | Fixed in | Reached from |
+| --- | --- | --- | --- | --- |
+| `.` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
+| `sub` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "Improper header parsing in net/http") | stdlib@go1.21.0 | go1.21.9 | server.go:31:9 sub.Serve → http.Get |
 ```
+
+The advisory's own prose is the link's title, rather than a column of its own: a
+sentence per row made the table wider than a pull request shows without scrolling.
 
 An advisory a fix introduced is in there too, described as the pass that first saw
 it did, which is why "Found in" can name a version this run had itself selected.
-"Reached from" is the call that reaches the vulnerable symbol, or `not called` for
-one that is only in the build list. "Fixed in" carries what became of it: the
-version that fixes it, `no fix published`, or that version and `(fix did not
-take)` when it was still reported after the upgrade, which a `replace` directive
-can cause.
+"Reached from" is how the module's own code reaches the vulnerable symbol, or
+`not called` for one that is only in the build list. Where more frames lie between
+the two, the one the caller reaches for is named and the rest are an ellipsis, so
+that the row never reads as a direct call that isn't there.
+
+"Fixed in" carries what became of the advisory: the version that fixes it, `no fix
+published`, or that version and `(fix did not take)` when it was still reported
+after the upgrade, which a `replace` directive can cause.
 
 A module that cannot be scanned does not stop the others being remediated: it is
 listed under the table and on stderr, and the run still exits 0, because a failure
