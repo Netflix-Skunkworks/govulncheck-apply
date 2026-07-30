@@ -23,17 +23,7 @@ require github.com/dgrijalva/jwt-go v3.2.0+incompatible
 github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumCAMpl/TFQ4/5kLM=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 -- want_diff.txt --
--- want_summary.json --
-{
-  "modules": [
-    {
-      "dir": ".",
-      "unfixed": [
-        {
-          "osv": "GO-2020-0017",
-          "reason": "no fix published"
-        }
-      ]
-    }
-  ]
-}
+-- want_report.md --
+| Module | Advisory | Summary | Found in | Fixed in | Reached from |
+| --- | --- | --- | --- | --- | --- |
+| `.` | [GO-2020-0017](https://pkg.go.dev/vuln/GO-2020-0017) | Authentication bypass in github.com/dgrijalva/jwt-go | github.com/dgrijalva/jwt-go@v3.2.0+incompatible | no fix published | main.go:11:29 nofix.main → jwt.MapClaims.VerifyAudience |

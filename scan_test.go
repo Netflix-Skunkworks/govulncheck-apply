@@ -15,11 +15,16 @@
 package main
 
 import (
-	"maps"
-	"reflect"
+	"go/token"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
+
+// unexported lets cmp read the fields of the types this package keeps to itself.
+// These are white-box tests, in the same package as what they compare.
+var unexported = cmp.AllowUnexported(vuln{}, fixes{})
 
 // TestToolchain covers the toolchain govulncheck is built under. The selection
 // only ever raises: golang.org/x/vuln's own go directive is newer than many of the
@@ -61,15 +66,21 @@ func TestHighestGoDirective(t *testing.T) {
 	}
 }
 
-// TestParse checks the two things a finding is read for: the highest fix per
-// module, and every OSV id seen against whether a fix was published for it.
+// TestParse checks what a stream is read for: the highest fix per module, and
+// what to say about each advisory. The three granularities govulncheck emits per
+// advisory have to fold into one, taking the trace from the only one that has it.
 func TestParse(t *testing.T) {
 	stream := `
-{"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [{"module": "golang.org/x/text"}]}}
-{"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [{"module": "golang.org/x/text"}, {"module": "example.com/m"}]}}
-{"finding": {"osv": "GO-TEST-0002", "fixed_version": "v0.3.8", "trace": [{"module": "golang.org/x/text"}]}}
-{"finding": {"osv": "GO-TEST-0003", "trace": [{"module": "example.com/unfixable"}]}}
-{"finding": {"osv": "GO-TEST-0004", "fixed_version": "v1.21.9", "trace": [{"module": "stdlib"}]}}
+{"osv": {"id": "GO-TEST-0001", "summary": "Panic in x/text", "database_specific": {"url": "https://pkg.go.dev/vuln/GO-TEST-0001"}}}
+{"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [{"module": "golang.org/x/text", "version": "v0.3.5"}]}}
+{"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [{"module": "golang.org/x/text", "version": "v0.3.5", "package": "golang.org/x/text/language"}]}}
+{"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [
+  {"module": "golang.org/x/text", "version": "v0.3.5", "package": "golang.org/x/text/language", "function": "Parse", "position": {"filename": "language/parse.go", "line": 33, "column": 6}},
+  {"module": "example.com/m", "package": "example.com/m", "function": "main", "position": {"filename": "main.go", "line": 10, "column": 28}}]}}
+{"finding": {"osv": "GO-TEST-0002", "fixed_version": "v0.3.8", "trace": [{"module": "golang.org/x/text", "version": "v0.3.7"}]}}
+{"finding": {"osv": "GO-TEST-0003", "trace": [{"module": "example.com/unfixable", "version": "v1.0.0"}]}}
+{"osv": {"id": "GO-TEST-0004", "database_specific": {"url": "https://pkg.go.dev/vuln/GO-TEST-0004"}}}
+{"finding": {"osv": "GO-TEST-0004", "fixed_version": "v1.21.9", "trace": [{"module": "stdlib", "version": "v1.21.0"}]}}
 {"config": {"scanner_name": "govulncheck"}}
 {"progress": {"message": "Scanning your code and 42 packages across 7 dependent modules for known vulnerabilities..."}}
 `
@@ -77,11 +88,31 @@ func TestParse(t *testing.T) {
 		modules:   map[string]string{"golang.org/x/text": "v0.3.8"},
 		goVersion: "v1.21.9",
 	}
-	wantReported := map[string]bool{
-		"GO-TEST-0001": true,
-		"GO-TEST-0002": true,
-		"GO-TEST-0003": false,
-		"GO-TEST-0004": true,
+	// The called-function granularity is the only one whose trace is kept, and
+	// callSite renders it; TestCallSite covers that rendering.
+	wantReported := map[string]vuln{
+		"GO-TEST-0001": {
+			osv: "GO-TEST-0001", url: "https://pkg.go.dev/vuln/GO-TEST-0001",
+			summary: "Panic in x/text", module: "golang.org/x/text", found: "v0.3.5",
+			fixedIn: "v0.3.7",
+			trace: []frame{
+				{
+					Module: "golang.org/x/text", Version: "v0.3.5",
+					Package: "golang.org/x/text/language", Function: "Parse",
+					Position: &token.Position{Filename: "language/parse.go", Line: 33, Column: 6},
+				},
+				{
+					Module: "example.com/m", Package: "example.com/m", Function: "main",
+					Position: &token.Position{Filename: "main.go", Line: 10, Column: 28},
+				},
+			},
+		},
+		"GO-TEST-0002": {osv: "GO-TEST-0002", module: "golang.org/x/text", found: "v0.3.7", fixedIn: "v0.3.8"},
+		"GO-TEST-0003": {osv: "GO-TEST-0003", module: "example.com/unfixable", found: "v1.0.0"},
+		"GO-TEST-0004": {
+			osv: "GO-TEST-0004", url: "https://pkg.go.dev/vuln/GO-TEST-0004",
+			module: "stdlib", found: "v1.21.0", fixedIn: "v1.21.9",
+		},
 	}
 
 	fix, reported, err := parse(strings.NewReader(stream))
@@ -90,10 +121,10 @@ func TestParse(t *testing.T) {
 	}
 	// Compared whole: nothing else may reach fix.modules, and the trace's second
 	// frame and the stdlib fix are both things that could wrongly land there.
-	if !reflect.DeepEqual(fix, wantFix) {
-		t.Errorf("parse() fixes = %+v, want %+v", fix, wantFix)
+	if diff := cmp.Diff(fix, wantFix, unexported); diff != "" {
+		t.Errorf("parse() fixes differ (-got +want):\n%s", diff)
 	}
-	if !maps.Equal(reported, wantReported) {
-		t.Errorf("parse() reported = %v, want %v", reported, wantReported)
+	if diff := cmp.Diff(reported, wantReported, unexported); diff != "" {
+		t.Errorf("parse() reported differ (-got +want):\n%s", diff)
 	}
 }

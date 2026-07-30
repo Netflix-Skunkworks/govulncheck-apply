@@ -15,8 +15,9 @@
 package internal
 
 import (
-	"maps"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestDirectives(t *testing.T) {
@@ -69,8 +70,8 @@ func TestDirectives(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !maps.Equal(got, tt.want) {
-				t.Errorf("Directives(%q) = %v, want %v", tt.comment, got, tt.want)
+			if diff := cmp.Diff(got, tt.want); diff != "" {
+				t.Errorf("Directives(%q) differs (-got +want):\n%s", tt.comment, diff)
 			}
 		})
 	}
