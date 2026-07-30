@@ -43,17 +43,18 @@ nothing to report, so a caller can test the output for emptiness.
 | Module | Advisory | Dependency | Fixed in | Reached from |
 | --- | --- | --- | --- | --- |
 | `.` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
-| `sub` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "Improper header parsing in net/http") | stdlib@go1.21.0 | go1.21.9 | server.go:31:9 sub.Serve → http.Get |
+| `sub` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "Improper header parsing in net/http") | net/http@go1.21.0 → go1.21.9 | go1.21.9 | server.go:31:9 sub.Serve → http.Get |
 ```
 
 The advisory's own prose is the link's title, rather than a column of its own: a
 sentence per row made the table wider than a pull request shows without scrolling.
 
-"Dependency" is the version of the vulnerable module the scan found, and the one
-the run went on to select where those differ: the version that fixes an advisory
-is a minimum, so minimal version selection can land above it. An advisory a fix
-introduced is in the table too, described as the pass that first saw it did, which
-is why the version found can be one this run had itself selected.
+"Dependency" names what carries the vulnerability — for the standard library the
+package, as govulncheck's own report has it — with the version the scan found and
+the one the run went on to select where those differ: the version that fixes an
+advisory is a minimum, so minimal version selection can land above it. An advisory
+a fix introduced is in the table too, described as the pass that first saw it did,
+which is why the version found can be one this run had itself selected.
 
 "Reached from" is how the module's own code reaches the vulnerable symbol, or
 `not called` for one that is only in the build list. Where more frames lie between

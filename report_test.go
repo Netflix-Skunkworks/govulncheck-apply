@@ -57,6 +57,7 @@ func TestReport(t *testing.T) {
 		osv:     "GO-2024-2687",
 		url:     "https://pkg.go.dev/vuln/GO-2024-2687",
 		module:  stdlib,
+		pkg:     "net/http",
 		found:   "v1.21.0",
 		fixedIn: "v1.21.9",
 	}
@@ -79,7 +80,7 @@ func TestReport(t *testing.T) {
 			name:    "the standard library reads as a toolchain name, not a semver",
 			modules: []moduleReport{{dir: ".", vulns: []vuln{stdlibVuln}}},
 			want: table("| `.` | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687) | " +
-				"stdlib@go1.21.0 | go1.21.9 | not called |"),
+				"net/http@go1.21.0 | go1.21.9 | not called |"),
 		},
 		{
 			name: "what was left behind says so where the version would be",
@@ -99,6 +100,15 @@ func TestReport(t *testing.T) {
 				{osv: "GO-3", module: stdlib, found: "v1.21.0", stillReported: true},
 			}}},
 			want: table("| `.` | GO-3 | stdlib@go1.21.0 | no fix published | not called |"),
+		},
+		{
+			// A module-granularity finding names no package, so there is only the
+			// module to fall back on.
+			name: "the standard library falls back to its own name",
+			modules: []moduleReport{{dir: ".", vulns: []vuln{
+				{osv: "GO-6", module: stdlib, found: "v1.21.0", fixedIn: "v1.21.9"},
+			}}},
+			want: table("| `.` | GO-6 | stdlib@go1.21.0 | go1.21.9 | not called |"),
 		},
 		{
 			// Minimal version selection can land above the version that fixes the

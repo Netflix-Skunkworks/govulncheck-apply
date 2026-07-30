@@ -93,8 +93,8 @@ func TestParse(t *testing.T) {
 	wantReported := map[string]vuln{
 		"GO-TEST-0001": {
 			osv: "GO-TEST-0001", url: "https://pkg.go.dev/vuln/GO-TEST-0001",
-			summary: "Panic in x/text", module: "golang.org/x/text", found: "v0.3.5",
-			fixedIn: "v0.3.7",
+			summary: "Panic in x/text", module: "golang.org/x/text",
+			pkg: "golang.org/x/text/language", found: "v0.3.5", fixedIn: "v0.3.7",
 			trace: []frame{
 				{
 					Module: "golang.org/x/text", Version: "v0.3.5",
