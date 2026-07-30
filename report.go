@@ -151,10 +151,17 @@ func cell(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
 
-// callSite renders where a module's own code reaches a vulnerable symbol. The last
-// frame of the trace is that call, and trace[0] is the symbol it reaches. Only the
+// callSite renders how a module's own code reaches a vulnerable symbol. The last
+// frame of the trace is the call in that code, trace[0] is the symbol it reaches,
+// and the frame between them is what it calls to get there. Only the
 // called-function granularity carries the positions, so the coarser findings
 // render as nothing.
+//
+// The frames in between are stood for by an ellipsis rather than dropped, because
+// naming only the two ends reads as a call that is not there: it is
+// `grpc.ClientConn.Invoke` that reaches the vulnerable symbol, not the protobuf
+// method that called it. govulncheck's own report says "which eventually calls"
+// for the same reason.
 func callSite(trace []frame) string {
 	if len(trace) < 2 {
 		return ""
@@ -163,7 +170,15 @@ func callSite(trace []frame) string {
 	if caller.Position == nil || !caller.Position.IsValid() {
 		return ""
 	}
-	return fmt.Sprintf("%s %s → %s", caller.Position, symbol(caller), symbol(trace[0]))
+	reached := []string{symbol(caller)}
+	if len(trace) > 2 {
+		reached = append(reached, symbol(trace[len(trace)-2]))
+	}
+	if len(trace) > 3 {
+		reached = append(reached, "…")
+	}
+	reached = append(reached, symbol(trace[0]))
+	return fmt.Sprintf("%s %s", caller.Position, strings.Join(reached, " → "))
 }
 
 // symbol names a frame's function the way govulncheck's own report does, so that

@@ -182,6 +182,24 @@ func TestCallSite(t *testing.T) {
 			want: "handler/server.go:7:2 handler.Server.Handle → language.Parse",
 		},
 		{
+			// Naming only the two ends would read as a direct call that is not
+			// there, so the frame the caller reaches for is named too.
+			name: "a deeper trace names what the caller calls to get there",
+			trace: []frame{vulnerable, {
+				Package: "google.golang.org/grpc", Receiver: "ClientConn", Function: "Invoke",
+			}, caller},
+			want: "main.go:10:28 foo.main → grpc.ClientConn.Invoke → language.Parse",
+		},
+		{
+			name: "the frames past that one are stood for by an ellipsis",
+			trace: []frame{vulnerable,
+				{Package: "example.com/deep", Function: "inner"},
+				{Package: "google.golang.org/grpc", Receiver: "ClientConn", Function: "Invoke"},
+				caller,
+			},
+			want: "main.go:10:28 foo.main → grpc.ClientConn.Invoke → … → language.Parse",
+		},
+		{
 			// The module and package granularities report a single frame and no
 			// position, so there is no call to name.
 			name:  "a coarser finding has nothing to render",
