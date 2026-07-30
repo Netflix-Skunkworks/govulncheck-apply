@@ -15,8 +15,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -75,37 +73,5 @@ func TestClassify(t *testing.T) {
 				t.Errorf("classify(%+v, %+v, %v) differs (-got +want):\n%s", tt.seen, tt.remaining, tt.selected, diff)
 			}
 		})
-	}
-}
-
-func TestModules(t *testing.T) {
-	layout := []string{
-		"go.mod",
-		"sub/go.mod",
-		"deep/nested/go.mod",
-		"vendor/example.com/dep/go.mod",
-		"testdata/fixture/go.mod",
-		".hidden/go.mod",
-		"_ignored/go.mod",
-		"notamodule/main.go",
-	}
-	dir := t.TempDir()
-	for _, path := range layout {
-		path = filepath.Join(dir, filepath.FromSlash(path))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, nil, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got, err := modules(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{dir, filepath.Join(dir, "deep", "nested"), filepath.Join(dir, "sub")}
-	if diff := cmp.Diff(got, want); diff != "" {
-		t.Errorf("modules() over %q differs (-got +want):\n%s", layout, diff)
 	}
 }

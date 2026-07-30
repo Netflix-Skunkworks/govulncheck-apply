@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go/version"
 	"io"
 	"os"
 	"os/exec"
@@ -27,6 +26,8 @@ import (
 	"strings"
 
 	"golang.org/x/mod/semver"
+
+	"github.com/netflix-skunkworks/govulncheck-apply/internal/gomod"
 )
 
 // govulncheckPkg is pinned so that a govulncheck release cannot change how a
@@ -59,11 +60,11 @@ func installGovulncheck(bin string, dirs []string) (string, error) {
 func highestGoDirective(dirs []string) (string, error) {
 	var highest string
 	for _, dir := range dirs {
-		mod, err := readGoMod(dir)
+		mod, err := gomod.Read(dir)
 		if err != nil {
 			return "", err
 		}
-		if mod.Go != nil && higher(mod.Go.Version, highest) {
+		if mod.Go != nil && gomod.Higher(mod.Go.Version, highest) {
 			highest = mod.Go.Version
 		}
 	}
@@ -79,10 +80,10 @@ func highestGoDirective(dirs []string) (string, error) {
 // local Go version names the local toolchain, which already scans every module
 // here; naming its version instead would only fetch a second copy of it.
 func toolchain(highest, local string) string {
-	if highest == "" || !higher(highest, local) {
+	if highest == "" || !gomod.Higher(highest, local) {
 		return "local+auto"
 	}
-	return "go" + fullVersion(highest) + "+auto"
+	return "go" + gomod.FullVersion(highest) + "+auto"
 }
 
 // localGoVersion returns the version of the toolchain bundled with the go
@@ -97,23 +98,6 @@ func localGoVersion() (string, error) {
 		return "", fmt.Errorf("go env GOVERSION: %v", err)
 	}
 	return strings.TrimPrefix(strings.TrimSpace(out.String()), "go"), nil
-}
-
-// higher reports whether Go version a is above b, each written as a go directive
-// writes it, e.g. "1.26" or "1.26.0". The prefix makes them the toolchain names
-// go/version compares, which orders a release candidate correctly where semver
-// reads it as invalid and so as lower than everything.
-func higher(a, b string) bool {
-	return version.Compare("go"+a, "go"+b) > 0
-}
-
-// fullVersion gives a Go version all three components, which is the only form
-// GOTOOLCHAIN accepts: there is no toolchain named go1.26 to fetch.
-func fullVersion(v string) string {
-	if strings.Count(v, ".") == 1 {
-		return v + ".0"
-	}
-	return v
 }
 
 // scan runs govulncheck over the module in dir, against the vulnerability
