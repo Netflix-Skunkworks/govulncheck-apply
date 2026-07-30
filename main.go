@@ -12,228 +12,247 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Command govulncheck-apply reads a `govulncheck -json` stream on stdin and
-// applies the identified fixes to the `go.mod`s in your working directory.
+// Command govulncheck-apply runs govulncheck over the modules under the working
+// directory and applies the fixes it reports. Each module is rescanned until a
+// pass leaves its go.mod and go.sum alone, because the version a fix selects can
+// itself be vulnerable.
 //
-//	govulncheck -json ./... | go tool github.com/netflix-skunkworks/govulncheck-apply
+//	go install github.com/netflix-skunkworks/govulncheck-apply@latest
+//	govulncheck-apply
 //
-// Or read the stream from a file, which keeps govulncheck's own exit status:
-//
-//	govulncheck -json ./... > vulns.json
-//	go tool github.com/netflix-skunkworks/govulncheck-apply -f vulns.json
+// A summary of the OSV ids it fixed, and of those it had to leave, is printed to
+// stdout as JSON.
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
-	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
-
-	"golang.org/x/mod/module"
-	"golang.org/x/mod/semver"
 )
 
-var input = flag.String("f", "", "read the govulncheck -json stream from this `file` instead of stdin. Useful when you want govulncheck's own failures to surface: bash takes a pipeline's exit status from the last command, so piping govulncheck into govulncheck-apply loses a govulncheck failure unless you turn on set -o pipefail, which you may not want over a whole script")
+// When we bump a version to fix a CVE, the new version may itself have a CVE
+// that needs another version bump. So, we need to iteratively scan and bump.
+// This is the number of iterations we're willing to do before we break out.
+const maxPasses = 5
+
+var dbURL = flag.String("db", "", "vulnerability database `url` for govulncheck to scan against, e.g. file:///tmp/db. Defaults to govulncheck's own default, https://vuln.go.dev")
 
 func main() {
 	flag.Parse()
-	fixes, err := readFixes()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if err := apply(fixes); err != nil {
+	if err := remediate(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-// readFixes parses the stream named by -f, or stdin if the flag is unset.
-func readFixes() (fixes, error) {
-	if *input == "" {
-		return parse(os.Stdin)
-	}
-	f, err := os.Open(*input)
+func remediate() error {
+	dirs, err := modules(".")
 	if err != nil {
-		return fixes{}, err
+		return err
 	}
-	defer func() { _ = f.Close() }()
-	return parse(f)
+	if len(dirs) == 0 {
+		return errors.New("no go.mod found anywhere under the working directory")
+	}
+
+	// We install govulncheck ourselves so that we can control the version. It
+	// has to be built at a version >= the Go mod directive it tests. Since we
+	// bump the Go directive, the govulncheck version that may already exist on
+	// the host machine may no longer be valid.
+	//
+	// We also don't want to add govulncheck to the `go.mod` and manage it that
+	// way, since it's not really this program's job to add tools that the user
+	// has to manage.
+	//
+	// So all in, we install it ourselves, but to a tmpdir.
+	bin, err := os.MkdirTemp("", "govulncheck-apply-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(bin) }()
+	govulncheck, err := installGovulncheck(bin, dirs)
+	if err != nil {
+		return err
+	}
+
+	// Search for an apply fixes. Record fixes as we go, so that we can report
+	// them to the user.
+	var report summary
+	for _, dir := range dirs {
+		report.Modules = append(report.Modules, remediateModule(dir, govulncheck, *dbURL))
+	}
+
+	// If there is a `go.work`, then run `go work use` to bump its `go`
+	// directive to whatever the `go.mod`s use after apply the remediations.
+	workUse := goWorkUse()
+
+	out := json.NewEncoder(os.Stdout)
+	out.SetIndent("", "  ")
+	if err := out.Encode(report); err != nil {
+		return err
+	}
+	return workUse
 }
 
-// fixes is a remediation: the version to upgrade each module to, and the go
-// directive to bump to for standard-library vulns (whose only fix is a newer
-// toolchain).
-type fixes struct {
-	modules   map[string]string // module path -> fixed version
-	goVersion string            // fixed version for stdlib vulns, e.g. "v1.21.9"
+// summary is what govulncheck-apply prints on stdout for whatever reports the
+// run, such as a pull request description or a build log.
+type summary struct {
+	Modules []moduleSummary `json:"modules"`
 }
 
-// parse reads a `govulncheck -json` stream and returns the reported fixes.
-func parse(r io.Reader) (fixes, error) {
-	dec := json.NewDecoder(r)
-	fix := fixes{modules: map[string]string{}}
-	decoded := false
-	for {
-		var msg message
-		switch err := dec.Decode(&msg); err {
-		case nil:
-		case io.EOF:
-			return fix, nil
+// moduleSummary is one module's outcome. A module that could not be scanned, or
+// that never settled, carries an error and no ids: a run that stopped partway
+// cannot say which ids it fixed.
+type moduleSummary struct {
+	Dir     string    `json:"dir"`
+	Fixed   []string  `json:"fixed,omitempty"`
+	Unfixed []unfixed `json:"unfixed,omitempty"`
+	Error   string    `json:"error,omitempty"`
+}
+
+// unfixed is a vulnerability the last pass reported and could not clear.
+type unfixed struct {
+	OSV    string `json:"osv"`
+	Reason string `json:"reason"`
+}
+
+// The reasons a vulnerability can be left behind: either the database publishes
+// no fixed version, or raising the requirement to it did not shake the
+// vulnerable version out of the build list, which usually means a replace
+// directive is holding it there.
+const (
+	noFix       = "no fix published"
+	fixNotTaken = "fix did not take"
+)
+
+// remediateModule scans the module in dir with govulncheck and applies the
+// fixes it identifies. It does so iteratively until a pass leaves go.mod and
+// go.sum alone.
+//
+// A module still changing after maxPasses is reported as an error.
+func remediateModule(dir, govulncheck, db string) moduleSummary {
+	result := moduleSummary{Dir: filepath.ToSlash(dir)}
+	seen := map[string]bool{}
+	before, err := modFiles(dir)
+	if err != nil {
+		return result.withError(err)
+	}
+	for range maxPasses {
+		fix, reported, err := scan(dir, govulncheck, db)
+		if err != nil {
+			return result.withError(err)
+		}
+		for osv := range reported {
+			seen[osv] = true
+		}
+		if err := apply(dir, fix); err != nil {
+			return result.withError(err)
+		}
+		after, err := modFiles(dir)
+		if err != nil {
+			return result.withError(err)
+		}
+		if bytes.Equal(before, after) {
+			result.Fixed, result.Unfixed = classify(seen, reported)
+			return result
+		}
+		before = after
+	}
+	return result.withError(fmt.Errorf("still changing after %d passes", maxPasses))
+}
+
+// classify sorts every OSV id a module's passes reported into the ones the last
+// pass no longer reported and the ones it could not clear. seen is every id
+// reported at all; remaining maps the ids the last pass still reported to whether
+// the database publishes a fix for them.
+func classify(seen, remaining map[string]bool) ([]string, []unfixed) {
+	var fixed []string
+	var left []unfixed
+	for _, osv := range slices.Sorted(maps.Keys(seen)) {
+		fixable, stillReported := remaining[osv]
+		switch {
+		case !stillReported:
+			fixed = append(fixed, osv)
+		case fixable:
+			left = append(left, unfixed{OSV: osv, Reason: fixNotTaken})
 		default:
-			// A failure before anything decoded almost always means the input
-			// isn't the JSON stream at all (e.g. `-json` was forgotten).
-			if decoded {
-				return fixes{}, err
+			left = append(left, unfixed{OSV: osv, Reason: noFix})
+		}
+	}
+	return fixed, left
+}
+
+// withError records why a module was given up on. One module that cannot be
+// remediated must not stop the others, so this is reported rather than returned.
+func (m moduleSummary) withError(err error) moduleSummary {
+	fmt.Fprintf(os.Stderr, "giving up on %s: %v\n", m.Dir, err)
+	m.Error = err.Error()
+	return m
+}
+
+// modules lists the directories under root holding a go.mod, outermost first.
+// vendor and testdata are skipped, along with the dotted and underscored
+// directories the go command ignores.
+func modules(root string) ([]string, error) {
+	var dirs []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			if d.Name() == "go.mod" {
+				dirs = append(dirs, filepath.Dir(path))
 			}
-			return fixes{}, fmt.Errorf("input could not be parsed. did you pass `govulncheck -json` output to this program? the error was: %v", err)
+			return nil
 		}
-		decoded = true
-
-		f := msg.Finding
-		if f == nil || len(f.Trace) == 0 {
-			continue
+		name := d.Name()
+		skip := name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
+		// root is always walked.
+		if path != root && skip {
+			return fs.SkipDir
 		}
-		vuln := f.Trace[0]
-		if vuln.Module == "" || f.FixedVersion == "" {
-			continue
-		}
-		// A module can have several vulns with different fixes; keep the highest.
-		if vuln.Module == "stdlib" {
-			if semver.Compare(f.FixedVersion, fix.goVersion) > 0 {
-				fix.goVersion = f.FixedVersion
-			}
-		} else if semver.Compare(f.FixedVersion, fix.modules[vuln.Module]) > 0 {
-			fix.modules[vuln.Module] = f.FixedVersion
-		}
-	}
-}
-
-func apply(fix fixes) error {
-	if len(fix.modules) == 0 && fix.goVersion == "" {
 		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	if fix.goVersion != "" {
-		// govulncheck reports stdlib fixes as e.g. "v1.21.9"; the go directive
-		// wants "1.21.9".
-		if err := goModEditGo(strings.TrimPrefix(fix.goVersion, "v")); err != nil {
-			return err
-		}
-	}
-	if len(fix.modules) > 0 {
-		if err := requireModules(fix.modules); err != nil {
-			return err
-		}
-		if err := bumpReplacedModules(fix.modules); err != nil {
-			return err
-		}
-	}
-	if err := goModTidy(); err != nil {
-		return err
-	}
-	return goModVendor()
+	// A directory sorts before everything under it, so this puts each module
+	// ahead of the modules nested in it, and keeps the summary's order stable.
+	slices.Sort(dirs)
+	return dirs, nil
 }
 
-// requireModules raises the minimum required version of each module to the
-// version that fixes it. A require directive is a minimum, so MVS selects the
-// higher of that and whatever the rest of the graph already requires.
-func requireModules(fixed map[string]string) error {
-	args := []string{"mod", "edit"}
-	for _, mod := range slices.Sorted(maps.Keys(fixed)) {
-		args = append(args, "-require="+mod+"@"+fixed[mod])
+// modFiles returns the files a pass can change that the next scan reads, so that
+// a pass which changes none of them ends the rescanning.
+func modFiles(dir string) ([]byte, error) {
+	var out []byte
+	for _, name := range []string{"go.mod", "go.sum"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		out = append(out, data...)
 	}
-	return run(exec.Command("go", args...))
+	return out, nil
 }
 
-func goModTidy() error {
-	return run(exec.Command("go", "mod", "tidy"))
-}
-
-// goModVendor re-syncs the vendor directory, if there is one. `go mod tidy`
-// leaves it alone, and a vendor directory that disagrees with go.mod fails every
-// later go command with "inconsistent vendoring". The go command keys vendoring
-// off vendor/modules.txt, so that file is what decides whether to re-run.
-func goModVendor() error {
-	if _, err := os.Stat("vendor/modules.txt"); err != nil {
+// goWorkUse raises go.work's own go directive to match the modules it uses.
+// Scanning with GOWORK=off keeps a raised go directive out of go.work, which can
+// leave go.work below the modules it uses, and every workspace-mode command then
+// fails with "requires go >= ...".
+func goWorkUse() error {
+	if _, err := os.Stat("go.work"); errors.Is(err, fs.ErrNotExist) {
 		return nil
-	}
-	return run(exec.Command("go", "mod", "vendor"))
-}
-
-// goModEditGo bumps the go directive to version (e.g. "1.21.9"), then drops any
-// toolchain directive left below it (which Go would otherwise ignore or fail on).
-func goModEditGo(version string) error {
-	if err := run(exec.Command("go", "mod", "edit", "-go="+version)); err != nil {
+	} else if err != nil {
 		return err
 	}
-	mod, err := readModEdit()
-	if err != nil {
-		return err
-	}
-	if mod.Toolchain == "" {
-		return nil
-	}
-	if semver.Compare("v"+strings.TrimPrefix(mod.Toolchain, "go"), "v"+version) < 0 {
-		// The toolchain version is less than the Go version: drop it.
-		return run(exec.Command("go", "mod", "edit", "-toolchain=none"))
-	}
-	return nil
-}
-
-// bumpReplacedModules updates replace statement versions with the given fixes.
-func bumpReplacedModules(fixed map[string]string) error {
-	mod, err := readModEdit()
-	if err != nil {
-		return err
-	}
-	for _, r := range mod.Replace {
-		v, ok := fixed[r.Old.Path]
-		if !ok || r.New.Path != r.Old.Path || r.New.Version == "" {
-			continue
-		}
-		replacement := r.Old.String() + "=" + r.New.Path + "@" + v
-		if err := run(exec.Command("go", "mod", "edit", "-replace="+replacement)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// modEdit is the subset of `go mod edit -json` this tool reads back.
-type modEdit struct {
-	Toolchain string
-	Replace   []replace
-}
-
-// replace mirrors one entry of go.mod's replace block.
-type replace struct {
-	Old module.Version
-	New module.Version
-}
-
-// readModEdit decodes `go mod edit -json` for the go.mod in the working directory.
-func readModEdit() (modEdit, error) {
-	out, err := exec.Command("go", "mod", "edit", "-json").Output()
-	if err != nil {
-		return modEdit{}, fmt.Errorf("go mod edit -json: %v", err)
-	}
-	var m modEdit
-	if err := json.Unmarshal(out, &m); err != nil {
-		return modEdit{}, err
-	}
-	return m, nil
-}
-
-// run executes cmd, surfacing its output on stderr.
-func run(cmd *exec.Cmd) error {
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %v", strings.Join(cmd.Args, " "), err)
-	}
-	return nil
+	return run(exec.Command("go", "work", "use"))
 }

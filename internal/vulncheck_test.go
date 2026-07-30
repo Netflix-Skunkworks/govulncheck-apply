@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package internal
 
 import (
@@ -25,12 +26,16 @@ import (
 	"golang.org/x/tools/txtar"
 )
 
-// wantDiffFile is the txtar entry holding the expected `git diff`.
-const wantDiffFile = "want_diff.txt"
+// These name the txtar entries holding a case's expectations. Every case has a
+// want_diff.txt; want_summary.json is optional.
+const (
+	wantDiffFile    = "want_diff.txt"
+	wantSummaryFile = "want_summary.json"
+)
 
-// TestVulncheck pipes govulncheck into govulncheck-apply against each txtar
-// repository in testcases/ and asserts the resulting `git diff` matches the
-// archive's want_diff.txt.
+// TestVulncheck runs govulncheck-apply against each txtar repository in
+// testcases/ and asserts the resulting `git diff` matches the archive's
+// want_diff.txt.
 func TestVulncheck(t *testing.T) {
 	cases, err := filepath.Glob("testcases/*.txtar")
 	if err != nil {
@@ -42,14 +47,20 @@ func TestVulncheck(t *testing.T) {
 		t.Fatal("no testcases/*.txtar files found")
 	}
 
-	// Build govulncheck-apply and govulncheck once, reused by every case.
+	// The binary is built once and reused by every case. govulncheck is not built
+	// here, because the program installs its own.
 	govulncheckApply := filepath.Join(t.TempDir(), "govulncheck-apply")
 	run(t, ".", "go", "build", "-o", govulncheckApply, "github.com/netflix-skunkworks/govulncheck-apply")
-	govulncheck := buildGovulncheck(t)
 
 	for _, path := range cases {
 		name := strings.TrimSuffix(filepath.Base(path), ".txtar")
 		t.Run(name, func(t *testing.T) {
+			// Each case gets its own repository and database under t.TempDir(),
+			// and the go command locks the caches they share, so the cases only
+			// contend for CPU. The binary above outlives them: a parallel subtest
+			// signals its parent before the parent's cleanups run.
+			t.Parallel()
+
 			archive, err := txtar.ParseFile(path)
 			if err != nil {
 				t.Fatal(err)
@@ -60,11 +71,16 @@ func TestVulncheck(t *testing.T) {
 				t.Skip("disabled by 'skip: true' directive")
 			}
 
-			// Split want_diff.txt (the expected output) from the files that
-			// make up the repository under test.
-			want, ok := take(archive, wantDiffFile)
+			wantDiff, ok := take(archive, wantDiffFile)
 			if !ok {
 				t.Fatalf("%s has no %s", path, wantDiffFile)
+			}
+			wantSummary, hasSummary := take(archive, wantSummaryFile)
+			// An empty want_diff.txt is how a case says the run must change
+			// nothing, which on its own would also pass if the run did nothing at
+			// all. Such a case has to assert the summary too.
+			if wantDiff == "" && !hasSummary {
+				t.Fatalf("%s asserts nothing: %s is empty and there is no %s", path, wantDiffFile, wantSummaryFile)
 			}
 
 			fsys, err := txtar.FS(archive)
@@ -78,22 +94,18 @@ func TestVulncheck(t *testing.T) {
 			}
 			gitInit(t, repo)
 
-			// Scan against the vendored DB for deterministic findings; a
-			// gotoolchain directive sets the toolchain whose standard library
-			// govulncheck analyzes.
-			db := loadDB(t, path)
-			toolchain := d["gotoolchain"]
-			if toolchain == "" {
-				toolchain = "local"
-			}
-			scan := "GOTOOLCHAIN=" + toolchain + " '" + govulncheck + "' -db file://" + db + " -json ./... | '" + govulncheckApply + "'"
-			run(t, repo, "bash", "-c", scan)
+			// Scanning the vendored DB keeps findings deterministic and offline.
+			env := []string{"GOTOOLCHAIN=" + Toolchain(d)}
+			db := "file://" + loadDB(t, path)
+			gotSummary := runEnv(t, repo, env, govulncheckApply, "-db", db)
 
 			run(t, repo, "git", "add", "-A")
-			got := run(t, repo, "git", "-c", "core.pager=cat", "diff", "--cached")
-
-			if got != want {
-				t.Errorf("diff mismatch\n--- want ---\n%s\n--- got ---\n%s", want, got)
+			gotDiff := run(t, repo, "git", "-c", "core.pager=cat", "diff", "--cached")
+			if gotDiff != wantDiff {
+				t.Errorf("git diff --cached =\n%s\nwant:\n%s", gotDiff, wantDiff)
+			}
+			if hasSummary && gotSummary != wantSummary {
+				t.Errorf("summary =\n%s\nwant:\n%s", gotSummary, wantSummary)
 			}
 		})
 	}
@@ -107,20 +119,6 @@ func directives(t *testing.T, comment []byte) map[string]string {
 		t.Fatal(err)
 	}
 	return d
-}
-
-// buildGovulncheck installs govulncheck once and returns the binary path. It's
-// prebuilt (not `go run @version`) so a case can set GOTOOLCHAIN for the stdlib
-// analysis without forcing that toolchain to also compile govulncheck.
-func buildGovulncheck(t *testing.T) string {
-	t.Helper()
-	gobin := t.TempDir()
-	cmd := exec.Command("go", "install", "golang.org/x/vuln/cmd/govulncheck@v1.6.0")
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GOFLAGS=", "GOBIN="+gobin)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("install govulncheck: %v\n%s", err, out)
-	}
-	return filepath.Join(gobin, "govulncheck")
 }
 
 // loadDB extracts the test's sibling foo.db.txtar database into a temp dir.
@@ -141,7 +139,8 @@ func loadDB(t *testing.T, txtarPath string) string {
 	return dir
 }
 
-// take removes the named file from the archive and returns its contents.
+// take removes the named file from the archive, returning its contents and
+// whether it was there at all.
 func take(archive *txtar.Archive, name string) (string, bool) {
 	i := slices.IndexFunc(archive.Files, func(f txtar.File) bool { return f.Name == name })
 	if i < 0 {
@@ -163,8 +162,15 @@ func gitInit(t *testing.T, dir string) {
 // run executes a command in dir, failing the test on error, and returns stdout.
 func run(t *testing.T, dir, name string, args ...string) string {
 	t.Helper()
+	return runEnv(t, dir, nil, name, args...)
+}
+
+// runEnv is run with extra environment variables.
+func runEnv(t *testing.T, dir string, env []string, name string, args ...string) string {
+	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

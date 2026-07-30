@@ -11,11 +11,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package main
 
-// message is a single entry in the govulncheck -json stream. The stream mixes
-// several entry types (config, SBOM, progress, osv, finding); we only care
-// about findings, so every other type decodes to a nil Finding and is skipped.
+// message is a single entry in the govulncheck -json stream. Entries other than
+// findings decode to a nil Finding and are skipped.
 type message struct {
 	Finding *finding `json:"finding"`
 }
@@ -23,7 +23,9 @@ type message struct {
 // finding reports one vulnerable module in the dependency graph. govulncheck
 // emits a finding per trace granularity (module, package, called function), so
 // the same OSV can appear several times with an identical module and fix.
+// FixedVersion is empty when the database publishes no fix for the OSV.
 type finding struct {
+	OSV          string  `json:"osv"`
 	FixedVersion string  `json:"fixed_version"`
 	Trace        []frame `json:"trace"`
 }
