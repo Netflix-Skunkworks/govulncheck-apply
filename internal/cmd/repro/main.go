@@ -12,8 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Command repro sets up a testcases/*.txtar scenario in a temp directory so you
-// can run govulncheck-apply against it by hand, outside the test harness.
+// Command repro sets up one of modfix's testcases/*.txtar scenarios in a temp
+// directory so you can run the commands against it by hand, outside the test
+// harness. Run it from the root of the repository.
+//
+// dockerfilefix's own scenarios are not set up here: they carry no vulnerability
+// database and reproduce by hand in a couple of files.
 package main
 
 import (
@@ -31,7 +35,7 @@ import (
 	"github.com/netflix-skunkworks/govulncheck-apply/internal"
 )
 
-var testcase = flag.String("testcase", "", "`name` of the scenario under internal/testcases, e.g. vuln_xtext")
+var testcase = flag.String("testcase", "", "`name` of the scenario under cmd/modfix/testcases, e.g. vuln_xtext")
 
 func main() {
 	flag.Parse()
@@ -45,7 +49,7 @@ func run() error {
 	if *testcase == "" {
 		return errors.New("no -testcase passed")
 	}
-	base := filepath.Join("internal", "testcases", *testcase)
+	base := filepath.Join("cmd", "modfix", "testcases", *testcase)
 
 	// txtar.ParseFile's error already names the file it could not read.
 	archive, err := txtar.ParseFile(base + ".txtar")
@@ -75,9 +79,12 @@ func run() error {
 		return fmt.Errorf("extract db: %v", err)
 	}
 
-	// govulncheck-apply has to be a binary because it can't be `go run` from
-	// inside the scenario's module. It installs its own govulncheck.
-	if err := runGo([]string{"GOTOOLCHAIN=local"}, "build", "-o", filepath.Join(dir, "govulncheck-apply"), "github.com/netflix-skunkworks/govulncheck-apply"); err != nil {
+	// The commands have to be binaries because they can't be `go run` from inside
+	// the scenario's module. modfix installs its own govulncheck.
+	err = runGo([]string{"GOTOOLCHAIN=local"}, "build", "-o", dir,
+		"github.com/netflix-skunkworks/govulncheck-apply/cmd/modfix",
+		"github.com/netflix-skunkworks/govulncheck-apply/cmd/dockerfilefix")
+	if err != nil {
 		return err
 	}
 
@@ -94,7 +101,8 @@ func run() error {
 Scenario ready at %[1]s
 
   cd %[1]s
-  GOTOOLCHAIN=%[2]s ./govulncheck-apply -db file://%[3]s
+  GOTOOLCHAIN=%[2]s ./modfix -db file://%[3]s
+  ./dockerfilefix
 `, dir, internal.Toolchain(d), db)
 	return nil
 }

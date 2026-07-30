@@ -1,0 +1,36 @@
+# A builder stage follows the go directive of the module it builds.
+#
+# example.com/foo declares go 1.21.9, which is where a standard-library fix such
+# as GO-2024-2687 leaves it. The builder stage names golang:1.21, and the official
+# golang images set GOTOOLCHAIN=local, so leaving it there fails `go mod download`
+# inside the image with "go.mod requires go >= 1.21.9".
+#
+# The tag is written with all three components: golang:1.21 follows the newest
+# 1.21 patch, which can still sit below the go directive.
+#
+# The Dockerfile sits in a subdirectory holding no go.mod of its own, so the
+# module it builds is the one above it. The second stage builds no Go and is left
+# alone.
+-- deploy/Dockerfile --
+FROM golang:1.21 AS builder
+WORKDIR /app
+COPY go.mod ./
+RUN go mod download
+
+FROM ubuntu:jammy
+COPY --from=builder /app/foo /foo
+-- go.mod --
+module example.com/foo
+
+go 1.21.9
+-- want_diff.txt --
+diff --git a/deploy/Dockerfile b/deploy/Dockerfile
+index e8c8875..82de8c3 100644
+--- a/deploy/Dockerfile
++++ b/deploy/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM golang:1.21 AS builder
++FROM golang:1.21.9 AS builder
+ WORKDIR /app
+ COPY go.mod ./
+ RUN go mod download

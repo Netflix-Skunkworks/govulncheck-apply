@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Command govulncheck-apply runs govulncheck over the modules under the working
-// directory and applies the fixes it reports. Each module is rescanned until a
-// pass leaves its go.mod and go.sum alone, because the version a fix selects can
-// itself be vulnerable.
+// Command modfix runs govulncheck over the modules under the working directory
+// and applies the fixes it reports. Each module is rescanned until a pass leaves
+// its go.mod and go.sum alone, because the version a fix selects can itself be
+// vulnerable.
 //
-//	go install github.com/netflix-skunkworks/govulncheck-apply@latest
-//	govulncheck-apply
+//	go install github.com/netflix-skunkworks/govulncheck-apply/cmd/modfix@latest
+//	modfix
 //
 // What it found and what became of each advisory is printed to stdout as one
 // markdown table, ready to carry into a pull request description. Nothing is
@@ -36,7 +36,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
+
+	"github.com/netflix-skunkworks/govulncheck-apply/internal/gomod"
 )
 
 // When we bump a version to fix a CVE, the new version may itself have a CVE
@@ -55,7 +56,7 @@ func main() {
 }
 
 func remediate() error {
-	dirs, err := modules(".")
+	dirs, err := gomod.Modules(".")
 	if err != nil {
 		return err
 	}
@@ -166,7 +167,7 @@ func classify(seen, remaining map[string]vuln, selected map[string]string) []vul
 // names, keyed the way a finding names it. The go directive is the standard
 // library's version, and govulncheck reports that one as a semver.
 func selectedVersions(dir string) (map[string]string, error) {
-	mod, err := readGoMod(dir)
+	mod, err := gomod.Read(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -178,38 +179,6 @@ func selectedVersions(dir string) (map[string]string, error) {
 		selected[stdlib] = "v" + mod.Go.Version
 	}
 	return selected, nil
-}
-
-// modules lists the directories under root holding a go.mod, outermost first.
-// vendor and testdata are skipped, along with the dotted and underscored
-// directories the go command ignores.
-func modules(root string) ([]string, error) {
-	var dirs []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() {
-			if d.Name() == "go.mod" {
-				dirs = append(dirs, filepath.Dir(path))
-			}
-			return nil
-		}
-		name := d.Name()
-		skip := name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
-		// root is always walked.
-		if path != root && skip {
-			return fs.SkipDir
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	// A directory sorts before everything under it, so this puts each module
-	// ahead of the modules nested in it, and keeps the report's row order stable.
-	slices.Sort(dirs)
-	return dirs, nil
 }
 
 // modFiles returns the files a pass can change that the next scan reads, so that

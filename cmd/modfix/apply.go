@@ -25,7 +25,7 @@ import (
 	"slices"
 	"strings"
 
-	"golang.org/x/mod/modfile"
+	"github.com/netflix-skunkworks/govulncheck-apply/internal/gomod"
 )
 
 // fixes is a remediation: the version to upgrade each module to, and the go
@@ -66,8 +66,8 @@ func apply(dir string, fix fixes) error {
 // higher of that and whatever the rest of the graph already requires.
 func requireModules(dir string, fixed map[string]string) error {
 	args := []string{"mod", "edit"}
-	for _, mod := range slices.Sorted(maps.Keys(fixed)) {
-		args = append(args, "-require="+mod+"@"+fixed[mod])
+	for _, path := range slices.Sorted(maps.Keys(fixed)) {
+		args = append(args, "-require="+path+"@"+fixed[path])
 	}
 	return run(goCmd(dir, args...))
 }
@@ -90,12 +90,12 @@ func goModVendor(dir string) error {
 // edit: a run interrupted between two of them would leave behind a go.mod that no
 // go command will touch, not even to repair it.
 func goModEditGo(dir, version string) error {
-	mod, err := readGoMod(dir)
+	mod, err := gomod.Read(dir)
 	if err != nil {
 		return err
 	}
 	args := []string{"mod", "edit", "-go=" + version}
-	if mod.Toolchain != nil && higher(version, strings.TrimPrefix(mod.Toolchain.Name, "go")) {
+	if mod.Toolchain != nil && gomod.Higher(version, strings.TrimPrefix(mod.Toolchain.Name, "go")) {
 		args = append(args, "-toolchain=none")
 	}
 	return run(goCmd(dir, args...))
@@ -105,7 +105,7 @@ func goModEditGo(dir, version string) error {
 // same module path, leaving forks and local-path replaces alone. They are raised
 // in one edit, so an interrupted run cannot leave some of them behind.
 func bumpReplacedModules(dir string, fixed map[string]string) error {
-	mod, err := readGoMod(dir)
+	mod, err := gomod.Read(dir)
 	if err != nil {
 		return err
 	}
@@ -121,18 +121,6 @@ func bumpReplacedModules(dir string, fixed map[string]string) error {
 		return nil
 	}
 	return run(goCmd(dir, append([]string{"mod", "edit"}, edits...)...))
-}
-
-// readGoMod parses dir's go.mod. It is read here rather than through `go mod edit
-// -json` because the go command refuses to run under a go directive above its own
-// version, which is what the directive is read to decide.
-func readGoMod(dir string) (*modfile.File, error) {
-	name := filepath.Join(dir, "go.mod")
-	data, err := os.ReadFile(name)
-	if err != nil {
-		return nil, err
-	}
-	return modfile.Parse(name, data, nil)
 }
 
 func goCmd(dir string, args ...string) *exec.Cmd {

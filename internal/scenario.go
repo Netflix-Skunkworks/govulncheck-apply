@@ -16,6 +16,8 @@ package internal
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,10 +35,16 @@ const (
 	wantReportFile = "want_report.md"
 )
 
-// TestVulncheck runs govulncheck-apply against each txtar repository in
-// testcases/ and asserts the resulting `git diff` matches the archive's
-// want_diff.txt.
-func TestVulncheck(t *testing.T) {
+// Scenarios builds the command in the calling test's own directory and runs it
+// over every testcases/*.txtar beside it, asserting the `git diff` each archive's
+// want_diff.txt says the run should produce, and what a want_report.md says it
+// should print.
+//
+// A scenario with a sibling foo.db.txtar is scanned against that vulnerability
+// database rather than the live vuln.go.dev, passed as -db, so findings are
+// deterministic and offline. A command that does not scan has no such sibling and
+// is given no flags.
+func Scenarios(t *testing.T) {
 	cases, err := filepath.Glob("testcases/*.txtar")
 	if err != nil {
 		t.Fatal(err)
@@ -47,10 +55,15 @@ func TestVulncheck(t *testing.T) {
 		t.Fatal("no testcases/*.txtar files found")
 	}
 
-	// The binary is built once and reused by every case. govulncheck is not built
-	// here, because the program installs its own.
-	govulncheckApply := filepath.Join(t.TempDir(), "govulncheck-apply")
-	run(t, ".", "go", "build", "-o", govulncheckApply, "github.com/netflix-skunkworks/govulncheck-apply")
+	// The binary is built once and reused by every case, and named after the
+	// directory it was built from so that a failure says which command failed.
+	// govulncheck is not built here, because modfix installs its own.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := filepath.Join(t.TempDir(), filepath.Base(wd))
+	run(t, ".", "go", "build", "-o", command, ".")
 
 	for _, path := range cases {
 		name := strings.TrimSuffix(filepath.Base(path), ".txtar")
@@ -94,10 +107,11 @@ func TestVulncheck(t *testing.T) {
 			}
 			gitInit(t, repo)
 
-			// Scanning the vendored DB keeps findings deterministic and offline.
-			env := []string{"GOTOOLCHAIN=" + Toolchain(d)}
-			db := "file://" + loadDB(t, path)
-			gotReport := runEnv(t, repo, env, govulncheckApply, "-db", db)
+			var args []string
+			if db := loadDB(t, path); db != "" {
+				args = append(args, "-db", "file://"+db)
+			}
+			gotReport := runEnv(t, repo, []string{"GOTOOLCHAIN=" + Toolchain(d)}, command, args...)
 
 			run(t, repo, "git", "add", "-A")
 			gotDiff := run(t, repo, "git", "-c", "core.pager=cat", "diff", "--cached")
@@ -111,7 +125,7 @@ func TestVulncheck(t *testing.T) {
 	}
 }
 
-// directives is Directives with the parse error reported as a test failure.
+// directives is [Directives] with the parse error reported as a test failure.
 func directives(t *testing.T, comment []byte) map[string]string {
 	t.Helper()
 	d, err := Directives(comment)
@@ -121,10 +135,15 @@ func directives(t *testing.T, comment []byte) map[string]string {
 	return d
 }
 
-// loadDB extracts the test's sibling foo.db.txtar database into a temp dir.
+// loadDB extracts a scenario's sibling foo.db.txtar vulnerability database into a
+// temp dir, or returns "" for a scenario that has none.
 func loadDB(t *testing.T, txtarPath string) string {
 	t.Helper()
-	ar, err := txtar.ParseFile(strings.TrimSuffix(txtarPath, ".txtar") + ".db.txtar")
+	name := strings.TrimSuffix(txtarPath, ".txtar") + ".db.txtar"
+	if _, err := os.Stat(name); errors.Is(err, fs.ErrNotExist) {
+		return ""
+	}
+	ar, err := txtar.ParseFile(name)
 	if err != nil {
 		t.Fatal(err)
 	}
