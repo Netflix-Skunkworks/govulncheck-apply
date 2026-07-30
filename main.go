@@ -135,7 +135,11 @@ func remediateModule(dir, govulncheck, db string) moduleReport {
 			return result.withError(err)
 		}
 		if bytes.Equal(before, after) {
-			result.vulns = classify(seen, reported)
+			selected, err := selectedVersions(dir)
+			if err != nil {
+				return result.withError(err)
+			}
+			result.vulns = classify(seen, reported, selected)
 			return result
 		}
 		before = after
@@ -144,16 +148,36 @@ func remediateModule(dir, govulncheck, db string) moduleReport {
 }
 
 // classify returns every advisory a module's passes reported, in id order, each
-// marked with whether the last pass reported it again. That, with the version
-// that fixes it, is everything the report needs to say what became of it.
-func classify(seen, remaining map[string]vuln) []vuln {
+// marked with whether the last pass reported it again and with the version of the
+// vulnerable module the run settled on. That, with the version that fixes it, is
+// everything the report needs to say what became of it.
+func classify(seen, remaining map[string]vuln, selected map[string]string) []vuln {
 	var out []vuln
 	for _, osv := range slices.Sorted(maps.Keys(seen)) {
 		v := seen[osv]
 		_, v.stillReported = remaining[osv]
+		v.selected = selected[v.module]
 		out = append(out, v)
 	}
 	return out
+}
+
+// selectedVersions reads back what the module now requires of each module it
+// names, keyed the way a finding names it. The go directive is the standard
+// library's version, and govulncheck reports that one as a semver.
+func selectedVersions(dir string) (map[string]string, error) {
+	mod, err := readGoMod(dir)
+	if err != nil {
+		return nil, err
+	}
+	selected := make(map[string]string, len(mod.Require)+1)
+	for _, r := range mod.Require {
+		selected[r.Mod.Path] = r.Mod.Version
+	}
+	if mod.Go != nil {
+		selected[stdlib] = "v" + mod.Go.Version
+	}
+	return selected, nil
 }
 
 // modules lists the directories under root holding a go.mod, outermost first.

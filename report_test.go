@@ -101,6 +101,16 @@ func TestReport(t *testing.T) {
 			want: table("| `.` | GO-3 | stdlib@go1.21.0 | no fix published | not called |"),
 		},
 		{
+			// Minimal version selection can land above the version that fixes the
+			// advisory, and the row says so rather than naming the minimum alone.
+			name: "a version selected above the one that fixes it shows the move",
+			modules: []moduleReport{{dir: ".", vulns: []vuln{{
+				osv: "GO-5", module: "golang.org/x/crypto", found: "v0.48.0",
+				selected: "v0.53.0", fixedIn: "v0.52.0",
+			}}}},
+			want: table("| `.` | GO-5 | golang.org/x/crypto@v0.48.0 → v0.53.0 | v0.52.0 | not called |"),
+		},
+		{
 			name: "one row per module, and the modules that failed listed after",
 			modules: []moduleReport{
 				{dir: ".", vulns: []vuln{called}},

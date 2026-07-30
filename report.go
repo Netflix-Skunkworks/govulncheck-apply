@@ -37,6 +37,7 @@ type vuln struct {
 	summary       string  // the advisory's own one-line prose, if it publishes one
 	module        string  // the vulnerable module's path, or stdlib
 	found         string  // the version of it the first scan found
+	selected      string  // the version the run left selected, empty if unchanged
 	fixedIn       string  // the version that fixes it, empty if none is published
 	trace         []frame // the call that reaches it, empty if the module makes none
 	stillReported bool    // whether the last pass reported it again
@@ -72,7 +73,7 @@ func (m moduleReport) withError(err error) moduleReport {
 // advisory's prose is not a column of its own: a sentence per row made the table
 // wider than a pull request shows without scrolling, so it rides along as the
 // link's title instead.
-const tableHeader = "| Module | Advisory | Found in | Fixed in | Reached from |\n" +
+const tableHeader = "| Module | Advisory | Dependency | Fixed in | Reached from |\n" +
 	"| --- | --- | --- | --- | --- |\n"
 
 // report writes every module's outcome as one markdown table, for a pull request
@@ -123,9 +124,21 @@ func row(dir string, v vuln) string {
 		reached = "not called"
 	}
 	return fmt.Sprintf("| `%s` | %s | %s | %s | %s |\n",
-		cell(dir), advisory(v),
-		cell(v.module+"@"+toolchainName(v.module, v.found)),
+		cell(dir), advisory(v), cell(v.module+"@"+upgrade(v)),
 		cell(fixedIn), cell(reached))
+}
+
+// upgrade renders what happened to the version of the vulnerable module: the one
+// the scan found, and the one the run went on to select where those differ. The
+// version that fixes an advisory is a minimum, so minimal version selection can
+// land above it, and reporting only the minimum next to a diff that names a higher
+// version reads as a mistake.
+func upgrade(v vuln) string {
+	found := toolchainName(v.module, v.found)
+	if v.selected == "" || v.selected == v.found {
+		return found
+	}
+	return found + " → " + toolchainName(v.module, v.selected)
 }
 
 // toolchainName renders the version of the vulnerable module. govulncheck reports

@@ -57,9 +57,9 @@ index 3c12b4f..1f78e03 100644
 +golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
 +golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
 -- want_report.md --
-| Module | Advisory | Found in | Fixed in | Reached from |
+| Module | Advisory | Dependency | Fixed in | Reached from |
 | --- | --- | --- | --- | --- |
-| `sub` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.6 | v0.3.7 | sub.go:6:67 sub.Parse → language.Parse |
+| `sub` | [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.6 → v0.3.7 | v0.3.7 | sub.go:6:67 sub.Parse → language.Parse |
 
 Modules that could not be remediated:
 
