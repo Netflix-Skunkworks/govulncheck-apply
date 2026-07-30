@@ -28,6 +28,7 @@ func TestClassify(t *testing.T) {
 	for _, tt := range []struct {
 		name            string
 		seen, remaining map[string]vuln
+		selected        map[string]string
 		want            []vuln
 	}{
 		{
@@ -56,14 +57,22 @@ func TestClassify(t *testing.T) {
 			want:      []vuln{fixable, {osv: "GO-2", stillReported: true}},
 		},
 		{
+			// The version that fixes an advisory is a minimum, so the run can land
+			// above it, and the row has to say which version it actually left.
+			name:     "the version the run settled on comes from the module itself",
+			seen:     map[string]vuln{"GO-1": {osv: "GO-1", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}},
+			selected: map[string]string{"example.com/a": "v1.2.0"},
+			want:     []vuln{{osv: "GO-1", module: "example.com/a", found: "v1.0.0", selected: "v1.2.0", fixedIn: "v1.1.0"}},
+		},
+		{
 			name: "a module with no findings reports nothing",
 			seen: map[string]vuln{},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classify(tt.seen, tt.remaining)
+			got := classify(tt.seen, tt.remaining, tt.selected)
 			if diff := cmp.Diff(got, tt.want, unexported); diff != "" {
-				t.Errorf("classify(%+v, %+v) differs (-got +want):\n%s", tt.seen, tt.remaining, diff)
+				t.Errorf("classify(%+v, %+v, %v) differs (-got +want):\n%s", tt.seen, tt.remaining, tt.selected, diff)
 			}
 		})
 	}
