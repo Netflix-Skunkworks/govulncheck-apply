@@ -1,55 +1,46 @@
 # govulncheck-apply
 
-Two commands that update a repository past the Go vulnerabilities `govulncheck`
-reports. `modfix` does the remediating; `dockerfilefix` moves the Dockerfiles that
-a remediation left behind. Run them in that order:
+Three commands that carry a repository past the Go vulnerabilities `govulncheck`
+reports. `modfix` does the remediating; `dockerfilefix` and `ymlfix` catch up the
+files a remediation leaves behind, so run `modfix` first.
 
     go install github.com/netflix-skunkworks/govulncheck-apply/cmd/modfix@latest
     go install github.com/netflix-skunkworks/govulncheck-apply/cmd/dockerfilefix@latest
+    go install github.com/netflix-skunkworks/govulncheck-apply/cmd/ymlfix@latest
+
     modfix > report.md
     dockerfilefix
+    ymlfix -path .tool-versions.goVersion config.yml
 
-Up to v0.7.0 there was one command at the module root, installed as
-`go install github.com/netflix-skunkworks/govulncheck-apply@latest`. That path now
-holds no command and the install fails; `cmd/modfix` is where it went, and
-`@v0.7.0` still installs the last release that answered to the old name.
+Each only ever raises a version, never lowers one, and names on stdout what it
+changed. All three edit in place with no way back: run them on a clean checkout and
+recover with `git checkout -- . && git clean -fd` rather than by running them again.
 
-Both walk out from the working directory and edit files in place, with no way
-back: run them on a clean checkout, and recover from an interrupted run with `git
-checkout -- . && git clean -fd` rather than by running it again.
+Every `go.mod` under the working directory is a module, except under `vendor`,
+`testdata`, and the dot- and underscore-prefixed directories the go command
+ignores.
 
-Neither reads anything under `vendor` or `testdata`, or under the dot- and
-underscore-prefixed directories the go command ignores, because what is there
-belongs to another module or to no build at all.
+Up to v0.7.0 there was one command at the module root, so
+`go install …/govulncheck-apply@latest` no longer resolves; `cmd/modfix` is where
+it went.
 
 ## modfix
 
-Runs `govulncheck` over the modules under the working directory and applies the
-fixes it reports: upgrades vulnerable modules and bumps the `go` directive for
-standard-library vulns. A module whose vendor directory is out of date afterwards
-is re-synced with `go mod vendor`, and a `go.work` whose `go` directive ends up
+Runs `govulncheck` over every module and applies what it reports: upgrades
+vulnerable modules, and raises the `go` directive for standard-library vulns. A
+stale vendor directory is re-synced with `go mod vendor`, and a `go.work` left
 below the modules it uses is raised with `go work use`.
 
-Every `go.mod` under the working directory is a module to fix. A module is
-rescanned until a pass leaves its `go.mod` and `go.sum` alone, because the version
-a fix selects can itself be vulnerable. Five passes in, a module that is still
-changing is reported as an error, since the last scan then says nothing about what
-is left to fix.
+A module is rescanned until a pass leaves its `go.mod` and `go.sum` alone, because
+the version a fix selects can itself be vulnerable; one still changing after five
+passes is reported as an error.
 
-`govulncheck` is installed into a temporary directory rather than taken from
-`PATH`, at a version pinned in `cmd/modfix/scan.go`. It is built under a toolchain
-at least as new as the highest `go` directive it will scan, because it type-checks
-with the `go/types` compiled into it.
+`govulncheck` is installed to a temp dir at a version pinned in
+`cmd/modfix/scan.go`, built under a toolchain at least as new as the highest `go`
+directive it will scan. `-db` points it at another vulnerability database.
 
-`-db` names a vulnerability database for `govulncheck` to scan against, for a
-mirror or an offline copy. It defaults to `govulncheck`'s own default,
-`https://vuln.go.dev`.
-
-### Output
-
-Every advisory any pass reported is printed to stdout as one markdown table, ready
-to carry into a pull request description. Nothing is printed when there was
-nothing to report, so a caller can test the output for emptiness.
+Every advisory any pass reported is printed as one markdown table, ready for a pull
+request description, and nothing at all when there is nothing to report:
 
 ```markdown
 | Advisory | Dependency | Fixed in | Reached from |
@@ -58,97 +49,77 @@ nothing to report, so a caller can test the output for emptiness.
 | [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "Improper header parsing in net/http") | net/http@go1.21.0 → go1.21.9 | go1.21.9 | sub/server.go:31:9 sub.Serve → http.Get |
 ```
 
-There is a row per advisory per module that reported it, and no column saying
-which module that was: almost every repository has one, and a column of repeated
-`.` earns no room. A call site names a file, which places the row where a
-repository has more than one module.
-
-The advisory's own prose is the link's title, rather than a column of its own: a
-sentence per row made the table wider than a pull request shows without scrolling.
-
-"Dependency" names what carries the vulnerability — for the standard library the
-package, as govulncheck's own report has it — with the version the scan found and
-the one the run went on to select where those differ: the version that fixes an
-advisory is a minimum, so minimal version selection can land above it. An advisory
-a fix introduced is in the table too, described as the pass that first saw it did,
-which is why the version found can be one this run had itself selected.
-
-"Reached from" is how the module's own code reaches the vulnerable symbol, or
-`not called` for one that is only in the build list. Where more frames lie between
-the two, the one the caller reaches for is named and the rest are an ellipsis, so
-that the row never reads as a direct call that isn't there.
-
-"Fixed in" carries what became of the advisory: the version that fixes it, `no fix
-published`, or that version and `(fix did not take)` when it was still reported
-after the upgrade, which a `replace` directive can cause.
-
-A module that cannot be scanned does not stop the others being remediated: it is
-listed under the table and on stderr, and the run still exits 0, because a failure
-would be read as "nothing changed" by whatever commits the result. A failure
-outside any one module — an unreadable directory, or `govulncheck` itself failing
-to install — does exit non-zero.
+"Fixed in" says what became of the advisory: the version that fixes it, `no fix
+published`, or that version and `(fix did not take)` where it survived the upgrade,
+which a `replace` directive can cause. A module that cannot be scanned is listed
+under the table and on stderr, and the run still exits 0, because a failure reads
+as "nothing changed" to whatever commits the result.
 
 ## dockerfilefix
 
-Raises the `golang` image tag in every Dockerfile under the working directory to
-the `go` directive of the module that Dockerfile builds. A builder stage declares
-its own Go, and the official `golang` images set `GOTOOLCHAIN=local`, so a `go`
-directive above the image's Go fails `go mod download` inside the image — which is
-what a standard-library fix leaves behind.
+Raises the `golang` image tag in every Dockerfile to the `go` directive of the
+module it builds — the nearest one above it, since an image builds one module. The
+official images set `GOTOOLCHAIN=local`, so a directive above the image's Go fails
+`go mod download` inside it.
 
 ```diff
 -FROM --platform={{ .Target.Platform }} docker.io/golang:1.21 AS builder
 +FROM --platform={{ .Target.Platform }} docker.io/golang:1.21.9 AS builder
 ```
 
-A Dockerfile follows the module it sits closest under, not the highest `go`
-directive in the repository, because an image builds one module. Only the version
-in the tag is rewritten, so a registry prefix, a `--platform` flag and a suffix
-such as `-alpine` all survive.
+Only the version is rewritten, so a registry prefix, a `--platform` flag and a
+suffix such as `-alpine` all survive. `golang:1` and `golang:latest` name no
+version to raise and are left alone.
 
-A tag is only ever raised. `golang:1` and `golang:latest` are left alone, having
-no version below the directive to raise, and so is a tag already past it: a tag
-naming no patch release follows that line's newest one, so it is compared as the
-oldest release it can resolve to. The tag is written with all three components,
-because `golang:1.21` can still resolve below `go 1.21.9`.
+## ymlfix
 
-Each Dockerfile it rewrote is named on stdout, one per line.
+Raises a version recorded in a YAML file, for CI that builds with a toolchain its
+own configuration names rather than with the `go` directive.
 
-## Test case format
+    ymlfix -path .tool-versions.goVersion config.yml
+    ymlfix -path .lint.golangci-version -version v2.4.0 config.yml
 
-Each command has its own scenarios, in `cmd/<command>/testcases`. One
-`foo.txtar` is a repository to run that command over, plus a `want_diff.txt`
-holding the `git diff` the run is expected to produce, and optionally a
-`want_report.md` holding what it should print. A sibling `foo.db.txtar` is a
-vulnerability database to scan against, passed as `-db`; only `modfix` scans, so
-only its scenarios carry one.
+`-path` addresses a key, not a file: the mapping keys that reach the version,
+separated by dots, the way `yq` names one. The file is the argument after it.
 
-`internal.Scenarios` is the harness both use. It builds the command in the
-directory the test itself lives in, so a scenario is only ever run by the command
-it sits beside.
+```yaml
+tool-versions:
+  buf: 1.28.1
+  goVersion: 1.21                          # -path .tool-versions.goVersion
+lint:
+  golangci-version: v2.1.0@sha256:ea84d1   # -path .lint.golangci-version
+```
 
-In the archive comment, `#` lines describe the case and mean nothing to the
-harness. Every other non-blank line is a `key: value` directive:
+Without `-version` the version raised to is the highest `go` directive in the
+repository. With it, that version is used instead, for something whose version is
+not a Go version — a pinned linter, whose releases have to be looked up somewhere
+this knows nothing about. A module version and a Go version cannot be ordered
+against each other, so asking is an error rather than a quiet no-op.
 
-| Directive | Effect |
-| --- | --- |
-| `gotoolchain: go1.21.0` | `GOTOOLCHAIN` floor for the run, setting the toolchain whose standard library `govulncheck` analyzes. A floor rather than a pin, so a module raised past it can still be scanned |
-| `skip: true` | Skip the case |
+Only the version's own bytes are rewritten, never the document re-emitted, so
+comments, blank lines, key order and flow mappings all survive. A digest is written
+over along with the version it belonged to. A `-path` reaching no version leaves
+the file alone.
 
-A line that is neither fails the test, so a mistyped directive can't quietly
+## Tests
+
+Each command has its own scenarios in `cmd/<command>/testcases`. A `foo.txtar` is a
+repository to run that command over, with a `want_diff.txt` holding the `git diff`
+it should produce and, optionally, a `want_report.md` holding what it should print.
+A sibling `foo.db.txtar` is a vulnerability database passed as `-db`; only `modfix`
+scans, so only its scenarios carry one.
+
+`internal.Scenarios` is the shared harness. It builds the command in the directory
+the test itself lives in, so a scenario is only ever run by the command beside it.
+
+An archive comment holds `#` prose and `key: value` directives: `gotoolchain:
+go1.21.0` sets the `GOTOOLCHAIN` floor for the run, and `skip: true` skips the
+case. A line that is neither fails the test, so a mistyped directive cannot quietly
 read as a comment.
 
-## Reproduce a test scenario
-
-`internal/cmd/repro` extracts a `cmd/modfix/testcases/*.txtar` scenario into a
-temp dir. Run it from the root of the repository:
+`internal/cmd/repro` extracts a `modfix` scenario into a temp dir to run by hand,
+and prints the commands to run there:
 
 ```sh
 go run ./internal/cmd/repro -testcase vuln_xtext
-cd <dir>
-./modfix -db file://<dir>/govulncheck-db
-./dockerfilefix
 ```
-
-`dockerfilefix`'s own scenarios are not set up this way: with no database to
-extract they are a couple of files to write by hand.

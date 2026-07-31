@@ -36,7 +36,7 @@ import (
 const govulncheckPkg = "golang.org/x/vuln/cmd/govulncheck@v1.6.0"
 
 func installGovulncheck(bin string, dirs []string) (string, error) {
-	highest, err := highestGoDirective(dirs)
+	highest, err := gomod.HighestGoDirective(dirs)
 	if err != nil {
 		return "", err
 	}
@@ -53,22 +53,6 @@ func installGovulncheck(bin string, dirs []string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(bin, "govulncheck"), nil
-}
-
-// highestGoDirective returns the highest go directive of the modules in dirs, or
-// "" if none of them declares one.
-func highestGoDirective(dirs []string) (string, error) {
-	var highest string
-	for _, dir := range dirs {
-		mod, err := gomod.Read(dir)
-		if err != nil {
-			return "", err
-		}
-		if mod.Go != nil && gomod.Higher(mod.Go.Version, highest) {
-			highest = mod.Go.Version
-		}
-	}
-	return highest, nil
 }
 
 // toolchain returns the GOTOOLCHAIN to build govulncheck under, given the

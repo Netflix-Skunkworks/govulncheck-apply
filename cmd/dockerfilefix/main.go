@@ -127,14 +127,14 @@ func module(path string, dirs []string) string {
 // --platform flag and a tag suffix such as -alpine all come through as they were.
 //
 // A tag naming no patch, such as golang:1.24, follows that line's newest patch
-// release, so it is compared as the oldest release it can resolve to: it is
+// release, and [gomod.Higher] orders it as the oldest release it can resolve to:
 // enough for a module on go 1.24.0, and not enough for one on go 1.24.3.
 func raiseTags(dockerfile, version string) string {
 	return fromGolang.ReplaceAllStringFunc(dockerfile, func(from string) string {
 		// The match ends at the version, so its last colon is the one separating
 		// the image from its tag, whatever a registry prefix holds.
 		tag := strings.LastIndex(from, ":") + 1
-		if !gomod.Higher(version, gomod.FullVersion(from[tag:])) {
+		if !gomod.Higher(version, from[tag:]) {
 			return from
 		}
 		return from[:tag] + version

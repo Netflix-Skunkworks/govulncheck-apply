@@ -54,11 +54,52 @@ func TestModules(t *testing.T) {
 	}
 }
 
+func TestHighestGoDirective(t *testing.T) {
+	goMods := []string{
+		"module example.com/a\n\ngo 1.21.0\n",
+		"module example.com/b\n\ngo 1.25.3\n",
+		"module example.com/c\n\ngo 1.22\n",
+		"module example.com/d\n",
+	}
+	var dirs []string
+	for _, goMod := range goMods {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		dirs = append(dirs, dir)
+	}
+	got, err := HighestGoDirective(dirs)
+	if err != nil {
+		t.Fatalf("HighestGoDirective(%q) failed: %v", goMods, err)
+	}
+	if want := "1.25.3"; got != want {
+		t.Errorf("HighestGoDirective(%q) = %q, want %q", goMods, got, want)
+	}
+}
+
+// TestIsVersion covers telling a Go version from a module version, which is what a
+// caller comparing two of them has to do before it can order them.
+func TestIsVersion(t *testing.T) {
+	for _, tt := range []struct {
+		in   string
+		want bool
+	}{
+		{"1.26", true},
+		{"1.26.0", true},
+		{"1.26rc1", true},
+		{"v2.10.1", false},
+		{"latest", false},
+		{"", false},
+	} {
+		if got := IsVersion(tt.in); got != tt.want {
+			t.Errorf("IsVersion(%q) = %v, want %v", tt.in, got, tt.want)
+		}
+	}
+}
+
 // TestHigher covers the orderings a go directive can ask for. A release candidate
-// is the one semver reads as invalid, and so as lower than every release. A
-// version naming no patch is the language version, which sits below that
-// language's first release, so a caller comparing versions from two places gives
-// both of them all three components first.
+// is the one semver reads as invalid, and so as lower than every release.
 func TestHigher(t *testing.T) {
 	for _, tt := range []struct {
 		a, b string
@@ -66,8 +107,10 @@ func TestHigher(t *testing.T) {
 	}{
 		{"1.26.0", "1.25.3", true},
 		{"1.25.3", "1.26.0", false},
+		// A version naming only a language is the release FullVersion says it
+		// stands for, so these two are the same version.
 		{"1.26", "1.26.0", false},
-		{"1.26.0", "1.26", true},
+		{"1.26.0", "1.26", false},
 		{"1.26rc1", "1.25.0", true},
 		{"1.21.0", "", true},
 		{"", "1.21.0", false},
@@ -82,7 +125,11 @@ func TestFullVersion(t *testing.T) {
 	for _, tt := range []struct{ in, want string }{
 		{"1.26", "1.26.0"},
 		{"1.26.4", "1.26.4"},
+		// A release candidate is already a release of its language, and there is no
+		// toolchain named go1.26rc1.0.
+		{"1.26rc1", "1.26rc1"},
 		{"", ""},
+		{"latest", "latest"},
 	} {
 		if got := FullVersion(tt.in); got != tt.want {
 			t.Errorf("FullVersion(%q) = %q, want %q", tt.in, got, tt.want)
