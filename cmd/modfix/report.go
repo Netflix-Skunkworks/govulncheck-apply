@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -80,27 +81,27 @@ func (m moduleReport) withError(err error) moduleReport {
 // own summary line, so that a repository with dozens reads as a list of one-liners.
 func report(w io.Writer, modules []moduleReport) error {
 	var entries, failures strings.Builder
-	found := 0
+	var all []vuln
 	for _, m := range modules {
 		if m.err != "" {
 			fmt.Fprintf(&failures, "- `%s`: %s\n", oneLine(m.dir), oneLine(m.err))
 			continue
 		}
 		for _, v := range m.vulns {
-			found++
-			if found > 1 {
+			all = append(all, v)
+			if len(all) > 1 {
 				entries.WriteString("\n")
 			}
-			entries.WriteString(entry(found, v))
+			entries.WriteString(entry(len(all), v))
 		}
 	}
-	if found == 0 && failures.Len() == 0 {
+	if len(all) == 0 && failures.Len() == 0 {
 		return nil
 	}
 
 	var out strings.Builder
-	if found > 0 {
-		fmt.Fprintf(&out, "govulncheck found (and this PR fixes) %d %s:\n\n", found, vulnerabilities(found))
+	if len(all) > 0 {
+		fmt.Fprintf(&out, "%s\n\n", heading(all))
 		out.WriteString(entries.String())
 	}
 	if failures.Len() > 0 {
@@ -114,12 +115,42 @@ func report(w io.Writer, modules []moduleReport) error {
 	return err
 }
 
-// vulnerabilities agrees the count in the heading with its noun.
-func vulnerabilities(n int) string {
-	if n == 1 {
-		return "vulnerability"
+// heading counts what the run found against what it left, so that a reader sees at
+// a glance whether anything is outstanding. An advisory the last pass no longer
+// reported is fixed, whether a version fixed it or go mod tidy dropped what carried
+// it. The two ways one can be left behind are counted apart, and named only when
+// they happened, so the numbers always account for the whole: a fix may not be
+// published yet, or one may be published and the upgrade not shake the vulnerable
+// version out of the build list, which a replace directive can cause.
+func heading(all []vuln) string {
+	fixed, unfixable, stuck := 0, 0, 0
+	for _, v := range all {
+		switch {
+		case !v.stillReported:
+			fixed++
+		case v.fixedIn == "":
+			unfixable++
+		default:
+			stuck++
+		}
 	}
-	return "vulnerabilities"
+	said := []string{fmt.Sprintf("this PR fixes %d", fixed)}
+	if unfixable > 0 {
+		said = append(said, fmt.Sprintf("%d %s not have a fix ready yet", unfixable, agree(unfixable, "does", "do")))
+	}
+	if stuck > 0 {
+		said = append(said, fmt.Sprintf("%d unable to fix", stuck))
+	}
+	return fmt.Sprintf("govulncheck found %d %s; %s:",
+		len(all), agree(len(all), "vulnerability", "vulnerabilities"), strings.Join(said, ", "))
+}
+
+// agree picks the form of a word that goes with a count.
+func agree(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // entry renders one advisory, numbered across the whole report the way govulncheck
@@ -134,9 +165,9 @@ func vulnerabilities(n int) string {
 // that the indentation survives and no symbol is read as markdown.
 func entry(n int, v vuln) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Vulnerability #%d: %s", n, advisory(v))
+	fmt.Fprintf(&b, "**Vulnerability #%d: %s**", n, advisory(v))
 	if v.summary != "" {
-		fmt.Fprintf(&b, " — %s", oneLine(v.summary))
+		fmt.Fprintf(&b, ": %s", oneLine(v.summary))
 	}
 	b.WriteString("\n\n<details>\n<summary>Details</summary>\n\n```\n")
 	if v.module == stdlib {
@@ -178,31 +209,49 @@ func at(v vuln, version string) string {
 	return vulnerableModule(v) + "@" + toolchainName(v.module, version)
 }
 
+// noTraces is written where govulncheck found no path from the module's own code.
+// The advisory was remediated anyway, so a reader who has just seen the diff is owed
+// the reason. Hard-wrapped because a code block scrolls sideways rather than
+// wrapping, which is what put the report in this shape to begin with.
+const noTraces = `    Example traces found: none. There is no path from your code to this
+      vulnerability. It was remediated because it is in your dependency tree,
+      where a scanner that does not tree-shake would alert on it regardless.
+`
+
 // traces renders the calls that reach the vulnerable symbol, numbered as
-// govulncheck numbers them. Nothing is written for an advisory the module only
-// carries.
+// govulncheck numbers them, or [noTraces] for an advisory the module only carries.
 //
 // Two findings reaching the same symbol by paths that differ only in frames no
 // sentence names render as the same sentence, and a list of identical lines tells a
 // reader nothing, so each is written once.
 func traces(traces [][]frame) string {
-	var reached []string
+	type call struct{ reaches, sentence string }
+	var reached []call
 	seen := map[string]bool{}
 	for _, trace := range traces {
-		call := callSite(trace)
-		if call == "" || seen[call] {
+		sentence := callSite(trace)
+		if sentence == "" || seen[sentence] {
 			continue
 		}
-		seen[call] = true
-		reached = append(reached, call)
+		seen[sentence] = true
+		reached = append(reached, call{symbol(trace[0]), sentence})
 	}
 	if len(reached) == 0 {
-		return ""
+		return noTraces
 	}
+	// Ordered by the symbol reached rather than by the sentence, which starts at the
+	// call site: govulncheck orders its own this way, and the same advisory should
+	// read the same in both reports.
+	slices.SortFunc(reached, func(a, b call) int {
+		if c := strings.Compare(a.reaches, b.reaches); c != 0 {
+			return c
+		}
+		return strings.Compare(a.sentence, b.sentence)
+	})
 	var b strings.Builder
 	b.WriteString("    Example traces found:\n")
 	for i, call := range reached {
-		fmt.Fprintf(&b, "      #%d: %s\n", i+1, call)
+		fmt.Fprintf(&b, "      #%d: %s\n", i+1, call.sentence)
 	}
 	return b.String()
 }

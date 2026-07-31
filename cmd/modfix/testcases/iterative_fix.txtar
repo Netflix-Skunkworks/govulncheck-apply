@@ -52,9 +52,9 @@ index bbd33e8..dee227d 100644
 +golang.org/x/text v0.3.8 h1:nAL+RVCQ9uMn3vJZbV+MRnydTJFPf8qqY42YiA6MrqY=
 +golang.org/x/text v0.3.8/go.mod h1:E6s5w1FMmriuDzIBO73fBruAKo1PCIq6d2Q6DHfQ8WQ=
 -- want_report.md --
-govulncheck found (and this PR fixes) 2 vulnerabilities:
+govulncheck found 2 vulnerabilities; this PR fixes 2:
 
-Vulnerability #1: [GO-TEST-0001](https://pkg.go.dev/vuln/GO-TEST-0001) — Panic on malformed language tag in golang.org/x/text
+**Vulnerability #1: [GO-TEST-0001](https://pkg.go.dev/vuln/GO-TEST-0001)**: Panic on malformed language tag in golang.org/x/text
 
 <details>
 <summary>Details</summary>
@@ -70,7 +70,7 @@ Vulnerability #1: [GO-TEST-0001](https://pkg.go.dev/vuln/GO-TEST-0001) — Panic
 
 </details>
 
-Vulnerability #2: [GO-TEST-0002](https://pkg.go.dev/vuln/GO-TEST-0002) — Denial of service in golang.org/x/text
+**Vulnerability #2: [GO-TEST-0002](https://pkg.go.dev/vuln/GO-TEST-0002)**: Denial of service in golang.org/x/text
 
 <details>
 <summary>Details</summary>

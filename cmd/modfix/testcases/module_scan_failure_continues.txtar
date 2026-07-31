@@ -57,9 +57,9 @@ index 3c12b4f..1f78e03 100644
 +golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
 +golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
 -- want_report.md --
-govulncheck found (and this PR fixes) 1 vulnerability:
+govulncheck found 1 vulnerability; this PR fixes 1:
 
-Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113) — Out-of-bounds read in golang.org/x/text
+**Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
 
 <details>
 <summary>Details</summary>

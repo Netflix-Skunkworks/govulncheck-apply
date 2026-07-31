@@ -46,9 +46,9 @@ it — laid out as `govulncheck` lays it out, in a code block so the indentation
 survives and no symbol is read as markdown:
 
 ````markdown
-govulncheck found (and this PR fixes) 1 vulnerability:
+govulncheck found 2 vulnerabilities; this PR fixes 2:
 
-Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113) — Out-of-bounds read in golang.org/x/text
+**Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
 
 <details>
 <summary>Details</summary>
@@ -64,6 +64,22 @@ Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113) — Out-o
 ```
 
 </details>
+
+**Vulnerability #2: [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)**: Improper header parsing in net/http
+
+<details>
+<summary>Details</summary>
+
+```
+  Standard library
+    Found in: net/http@go1.21.0
+    Fixed in: net/http@go1.21.9
+    Example traces found: none. There is no path from your code to this
+      vulnerability. It was remediated because it is in your dependency tree,
+      where a scanner that does not tree-shake would alert on it regardless.
+```
+
+</details>
 ````
 
 The heading, the link and the advisory's prose stay outside the fold, so the list
@@ -71,15 +87,23 @@ reads without opening anything.
 
 A standard-library advisory reads `Standard library` in place of the module, and
 names the package at a toolchain version — `net/http@go1.21.9` — as `govulncheck`
-does. Two lines are not `govulncheck`'s: `Selected`, which appears only where
+does. The heading counts what was found against what was fixed, and names the two
+ways one can be left behind — no fix published yet, or one published that the
+upgrade could not take, which a `replace` directive can cause — only when they
+happened, so the numbers always account for the whole. Two lines are not `govulncheck`'s: `Selected`, which appears only where
 minimal version selection landed above the version that fixes the advisory so the
 entry does not disagree with the diff, and `Fixed in` reading `no fix published` or
 carrying `(fix did not take)` where the advisory survived the upgrade, which a
 `replace` directive can cause.
 
 `govulncheck` reports a finding per reachable symbol, so one advisory can carry a
-dozen traces. Two that differ only in frames no sentence names are written once, and
-an advisory the module merely carries has no traces at all.
+dozen traces. They are ordered by the symbol reached rather than by the call site the
+sentence starts at, which is how `govulncheck` orders its own, so the same advisory
+reads the same in both reports. Two that differ only in frames no sentence names are
+written once. An
+advisory nothing in the module reaches says so, and why it was remediated anyway:
+being in the dependency tree is enough for a scanner that does not tree-shake to
+alert on it.
 
 A module that cannot be scanned is listed at the end and on stderr, and the run
 still exits 0, because a failure reads as "nothing changed" to whatever commits the
