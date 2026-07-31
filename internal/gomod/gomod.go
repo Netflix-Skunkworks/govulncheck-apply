@@ -70,6 +70,24 @@ func Modules(root string) ([]string, error) {
 	return dirs, nil
 }
 
+// HighestGoDirective returns the highest go directive of the modules in dirs, or
+// "" if none of them declares one. It is what every module in the repository can
+// be built by, so it is the version anything else naming a Go version has to keep
+// up with.
+func HighestGoDirective(dirs []string) (string, error) {
+	var highest string
+	for _, dir := range dirs {
+		mod, err := Read(dir)
+		if err != nil {
+			return "", err
+		}
+		if mod.Go != nil && Higher(mod.Go.Version, highest) {
+			highest = mod.Go.Version
+		}
+	}
+	return highest, nil
+}
+
 // Read parses dir's go.mod. It is read here rather than through `go mod edit
 // -json` because the go command refuses to run under a go directive above its own
 // version, which is what the directive is read to decide.
@@ -86,16 +104,36 @@ func Read(dir string) (*modfile.File, error) {
 // writes it, e.g. "1.26" or "1.26.0". The prefix makes them the toolchain names
 // go/version compares, which orders a release candidate correctly where semver
 // reads it as invalid and so as lower than everything.
+//
+// Both are given all three components first, so a version naming only a language
+// is the release [FullVersion] says it stands for: 1.26 and 1.26.0 are the same
+// version here, where go/version alone puts the language below its first release.
+// Two versions being compared come from two places that need not write them the
+// same way, and the one written shorter is not the older for it.
 func Higher(a, b string) bool {
-	return version.Compare("go"+a, "go"+b) > 0
+	return version.Compare("go"+FullVersion(a), "go"+FullVersion(b)) > 0
 }
 
-// FullVersion gives a Go version all three components. It is the only form
-// GOTOOLCHAIN accepts, there being no toolchain named go1.26 to fetch, and a
-// golang image tag naming only a major and a minor follows that line's newest
-// patch release, which can sit below the go directive it is being compared to.
+// IsVersion reports whether v is a Go version at all, so that a caller comparing
+// versions from two places can tell that both are ones [Higher] orders.
+func IsVersion(v string) bool {
+	return version.IsValid("go" + v)
+}
+
+// FullVersion gives a Go version all three components, which is the only form
+// GOTOOLCHAIN accepts, there being no toolchain named go1.26 to fetch. It is also
+// the release a version naming only a language stands for, which is what makes two
+// versions written in different places comparable. Anything that is not a Go
+// version at all comes back as it went in.
 func FullVersion(v string) string {
-	if strings.Count(v, ".") == 1 {
+	if !IsVersion(v) {
+		return v
+	}
+	// A version equal to its own language version names no release, so it stands
+	// for that language's first. A release candidate already names one, however few
+	// components it has: go1.26rc1 is a release of the go1.26 language, and
+	// go1.26rc1.0 is not a version at all.
+	if version.Lang("go"+v) == "go"+v {
 		return v + ".0"
 	}
 	return v

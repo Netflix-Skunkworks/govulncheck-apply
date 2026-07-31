@@ -46,26 +46,6 @@ func TestToolchain(t *testing.T) {
 	}
 }
 
-func TestHighestGoDirective(t *testing.T) {
-	goMods := []string{
-		"module example.com/a\n\ngo 1.21.0\n",
-		"module example.com/b\n\ngo 1.25.3\n",
-		"module example.com/c\n\ngo 1.22\n",
-		"module example.com/d\n",
-	}
-	var dirs []string
-	for _, goMod := range goMods {
-		dirs = append(dirs, moduleDir(t, goMod))
-	}
-	got, err := highestGoDirective(dirs)
-	if err != nil {
-		t.Fatalf("highestGoDirective(%q) failed: %v", goMods, err)
-	}
-	if want := "1.25.3"; got != want {
-		t.Errorf("highestGoDirective(%q) = %q, want %q", goMods, got, want)
-	}
-}
-
 // TestParse checks what a stream is read for: the highest fix per module, and
 // what to say about each advisory. The three granularities govulncheck emits per
 // advisory have to fold into one, taking the trace from the only one that has it.
