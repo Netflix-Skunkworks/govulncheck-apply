@@ -70,15 +70,16 @@ func (m moduleReport) withError(err error) moduleReport {
 	return m
 }
 
-// report writes every module's outcome as markdown, for a pull request
-// description or a build log to carry as it is. Nothing is written when there is
-// nothing to say, so that a caller can test the output for emptiness.
+// report writes every module's outcome as markdown, for a pull request description
+// or a build log to carry as it is. Nothing is written when there is nothing to
+// say, so that a caller can test the output for emptiness.
 //
 // The layout is govulncheck's own, an entry per advisory rather than a row: a
 // summary and a call trace are each a sentence, and a table of sentences is wider
-// than a pull request shows without scrolling.
+// than a pull request shows without scrolling. Each entry is folded away behind its
+// own summary line, so that a repository with dozens reads as a list of one-liners.
 func report(w io.Writer, modules []moduleReport) error {
-	var out, failures strings.Builder
+	var entries, failures strings.Builder
 	found := 0
 	for _, m := range modules {
 		if m.err != "" {
@@ -88,13 +89,19 @@ func report(w io.Writer, modules []moduleReport) error {
 		for _, v := range m.vulns {
 			found++
 			if found > 1 {
-				out.WriteString("\n")
+				entries.WriteString("\n")
 			}
-			out.WriteString(entry(found, v))
+			entries.WriteString(entry(found, v))
 		}
 	}
-	if out.Len() == 0 && failures.Len() == 0 {
+	if found == 0 && failures.Len() == 0 {
 		return nil
+	}
+
+	var out strings.Builder
+	if found > 0 {
+		fmt.Fprintf(&out, "govulncheck found (and this PR fixes) %d %s:\n\n", found, vulnerabilities(found))
+		out.WriteString(entries.String())
 	}
 	if failures.Len() > 0 {
 		if out.Len() > 0 {
@@ -107,31 +114,47 @@ func report(w io.Writer, modules []moduleReport) error {
 	return err
 }
 
-// entry renders one advisory, numbered across the whole report the way
-// govulncheck numbers its own. Which module of the repository reported it is not
-// named: almost every repository has one, and a call trace names a file, which
-// places the entry in a repository that has more than one.
+// vulnerabilities agrees the count in the heading with its noun.
+func vulnerabilities(n int) string {
+	if n == 1 {
+		return "vulnerability"
+	}
+	return "vulnerabilities"
+}
+
+// entry renders one advisory, numbered across the whole report the way govulncheck
+// numbers its own. Which module of the repository reported it is not named: almost
+// every repository has one, and a call trace names a file, which places the entry
+// in a repository that has more than one.
+//
+// The advisory, its link and its prose are a line of their own rather than the
+// summary of the fold, so that the list reads without opening anything and the link
+// is a link rather than half of a control. What is folded away is what govulncheck
+// prints under the heading, laid out as govulncheck lays it out, in a code block so
+// that the indentation survives and no symbol is read as markdown.
 func entry(n int, v vuln) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "#### Vulnerability #%d: %s\n", n, advisory(v))
+	fmt.Fprintf(&b, "Vulnerability #%d: %s", n, advisory(v))
 	if v.summary != "" {
-		fmt.Fprintf(&b, "\n%s\n", oneLine(v.summary))
+		fmt.Fprintf(&b, " — %s", oneLine(v.summary))
 	}
-	b.WriteString("\n")
+	b.WriteString("\n\n<details>\n<summary>Details</summary>\n\n```\n")
 	if v.module == stdlib {
-		b.WriteString("- Standard library\n")
+		b.WriteString("  Standard library\n")
 	} else {
-		fmt.Fprintf(&b, "- Module: `%s`\n", oneLine(v.module))
+		fmt.Fprintf(&b, "  Module: %s\n", oneLine(v.module))
 	}
-	fmt.Fprintf(&b, "- Found in: `%s`\n", oneLine(at(v, v.found)))
-	fmt.Fprintf(&b, "- Fixed in: %s\n", fixedIn(v))
+	fmt.Fprintf(&b, "    Found in: %s\n", oneLine(at(v, v.found)))
+	fmt.Fprintf(&b, "    Fixed in: %s\n", fixedIn(v))
 	// The version that fixes an advisory is a minimum, so minimal version selection
 	// can land above it, and naming only the minimum next to a diff that says
-	// otherwise reads as a mistake.
+	// otherwise reads as a mistake. govulncheck has no line for this, so it gets one
+	// in the same shape as the two above.
 	if v.selected != "" && v.selected != v.found && v.selected != v.fixedIn {
-		fmt.Fprintf(&b, "- Selected: `%s`\n", oneLine(at(v, v.selected)))
+		fmt.Fprintf(&b, "    Selected: %s\n", oneLine(at(v, v.selected)))
 	}
 	b.WriteString(traces(v.traces))
+	b.WriteString("```\n\n</details>\n")
 	return b.String()
 }
 
@@ -142,7 +165,7 @@ func fixedIn(v vuln) string {
 	if v.fixedIn == "" {
 		return noFix
 	}
-	in := "`" + oneLine(at(v, v.fixedIn)) + "`"
+	in := at(v, v.fixedIn)
 	if v.stillReported {
 		in += " (" + fixNotTaken + ")"
 	}
@@ -155,31 +178,32 @@ func at(v vuln, version string) string {
 	return vulnerableModule(v) + "@" + toolchainName(v.module, version)
 }
 
-// traces renders the calls that reach the vulnerable symbol, folded away because
-// one advisory can be reached a dozen ways and the list is longer than the entry
-// it belongs to. Nothing is written for an advisory the module only carries.
+// traces renders the calls that reach the vulnerable symbol, numbered as
+// govulncheck numbers them. Nothing is written for an advisory the module only
+// carries.
+//
+// Two findings reaching the same symbol by paths that differ only in frames no
+// sentence names render as the same sentence, and a list of identical lines tells a
+// reader nothing, so each is written once.
 func traces(traces [][]frame) string {
 	var reached []string
+	seen := map[string]bool{}
 	for _, trace := range traces {
-		if call := callSite(trace); call != "" {
-			reached = append(reached, call)
+		call := callSite(trace)
+		if call == "" || seen[call] {
+			continue
 		}
+		seen[call] = true
+		reached = append(reached, call)
 	}
 	if len(reached) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n<details>\n<summary>%d example trace", len(reached))
-	if len(reached) > 1 {
-		b.WriteString("s")
-	}
-	b.WriteString("</summary>\n\n")
+	b.WriteString("    Example traces found:\n")
 	for i, call := range reached {
-		// Wrapped whole, so that a receiver's star or an underscore in a symbol is
-		// not read as markdown.
-		fmt.Fprintf(&b, "%d. `%s`\n", i+1, call)
+		fmt.Fprintf(&b, "      #%d: %s\n", i+1, call)
 	}
-	b.WriteString("\n</details>\n")
 	return b.String()
 }
 

@@ -33,17 +33,19 @@ index 9b981c3..d7e9510 100644
 -go 1.21.0
 +go 1.21.9
 -- want_report.md --
-#### Vulnerability #1: [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)
+govulncheck found (and this PR fixes) 1 vulnerability:
 
-HTTP/2 rapid reset can cause excessive work in net/http
-
-- Standard library
-- Found in: `net/http@go1.21.0`
-- Fixed in: `net/http@go1.21.9`
+Vulnerability #1: [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687) — HTTP/2 rapid reset can cause excessive work in net/http
 
 <details>
-<summary>1 example trace</summary>
+<summary>Details</summary>
 
-1. `main.go:6:10: foo.main calls http.Get`
+```
+  Standard library
+    Found in: net/http@go1.21.0
+    Fixed in: net/http@go1.21.9
+    Example traces found:
+      #1: main.go:6:10: foo.main calls http.Get
+```
 
 </details>

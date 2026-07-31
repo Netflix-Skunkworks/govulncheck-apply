@@ -57,18 +57,20 @@ index 3c12b4f..1f78e03 100644
 +golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
 +golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
 -- want_report.md --
-#### Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)
+govulncheck found (and this PR fixes) 1 vulnerability:
 
-Out-of-bounds read in golang.org/x/text
-
-- Module: `golang.org/x/text`
-- Found in: `golang.org/x/text@v0.3.6`
-- Fixed in: `golang.org/x/text@v0.3.7`
+Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113) — Out-of-bounds read in golang.org/x/text
 
 <details>
-<summary>1 example trace</summary>
+<summary>Details</summary>
 
-1. `sub.go:6:67: sub.Parse calls language.Parse`
+```
+  Module: golang.org/x/text
+    Found in: golang.org/x/text@v0.3.6
+    Fixed in: golang.org/x/text@v0.3.7
+    Example traces found:
+      #1: sub.go:6:67: sub.Parse calls language.Parse
+```
 
 </details>
 

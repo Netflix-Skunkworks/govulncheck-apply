@@ -40,39 +40,46 @@ passes is reported as an error.
 directive it will scan. `-db` points it at another vulnerability database.
 
 Every advisory any pass reported is printed as markdown, ready for a pull request
-description, and nothing at all when there is nothing to report. The layout is
-`govulncheck`'s own, an entry per advisory: a summary and a call trace are each a
-sentence, and a table of sentences is wider than a pull request shows without
-scrolling.
+description, and nothing at all when there is nothing to report. Each advisory gets
+its own line, and what `govulncheck` prints under that heading is folded away behind
+it — laid out as `govulncheck` lays it out, in a code block so the indentation
+survives and no symbol is read as markdown:
 
-```markdown
-#### Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)
+````markdown
+govulncheck found (and this PR fixes) 1 vulnerability:
 
-Out-of-bounds read in golang.org/x/text
-
-- Module: `golang.org/x/text`
-- Found in: `golang.org/x/text@v0.3.5`
-- Fixed in: `golang.org/x/text@v0.3.7`
-- Selected: `golang.org/x/text@v0.3.8`
+Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113) — Out-of-bounds read in golang.org/x/text
 
 <details>
-<summary>2 example traces</summary>
+<summary>Details</summary>
 
-1. `main.go:12:28: foo.main calls language.Parse`
-2. `sub/lib.go:9:14: sub.Tag calls jwt.MapClaims.Valid, which eventually calls language.Parse`
+```
+  Module: golang.org/x/text
+    Found in: golang.org/x/text@v0.3.5
+    Fixed in: golang.org/x/text@v0.3.7
+    Selected: golang.org/x/text@v0.3.8
+    Example traces found:
+      #1: main.go:12:28: foo.main calls language.Parse
+      #2: sub/lib.go:9:14: sub.Tag calls grpc.ClientConn.Invoke, which eventually calls language.Parse
+```
 
 </details>
-```
+````
+
+The heading, the link and the advisory's prose stay outside the fold, so the list
+reads without opening anything.
 
 A standard-library advisory reads `Standard library` in place of the module, and
 names the package at a toolchain version — `net/http@go1.21.9` — as `govulncheck`
-does. `Selected` appears only where minimal version selection landed above the
-version that fixes the advisory, so the entry does not disagree with the diff.
-`Fixed in` reads `no fix published`, or carries `(fix did not take)` where the
-advisory survived the upgrade, which a `replace` directive can cause.
+does. Two lines are not `govulncheck`'s: `Selected`, which appears only where
+minimal version selection landed above the version that fixes the advisory so the
+entry does not disagree with the diff, and `Fixed in` reading `no fix published` or
+carrying `(fix did not take)` where the advisory survived the upgrade, which a
+`replace` directive can cause.
 
-Traces are folded away because one advisory can be reached a dozen ways. An
-advisory the module only carries has none, and no `<details>` at all.
+`govulncheck` reports a finding per reachable symbol, so one advisory can carry a
+dozen traces. Two that differ only in frames no sentence names are written once, and
+an advisory the module merely carries has no traces at all.
 
 A module that cannot be scanned is listed at the end and on stderr, and the run
 still exits 0, because a failure reads as "nothing changed" to whatever commits the

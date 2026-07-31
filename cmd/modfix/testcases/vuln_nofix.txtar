@@ -24,17 +24,19 @@ github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumC
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 -- want_diff.txt --
 -- want_report.md --
-#### Vulnerability #1: [GO-2020-0017](https://pkg.go.dev/vuln/GO-2020-0017)
+govulncheck found (and this PR fixes) 1 vulnerability:
 
-Authentication bypass in github.com/dgrijalva/jwt-go
-
-- Module: `github.com/dgrijalva/jwt-go`
-- Found in: `github.com/dgrijalva/jwt-go@v3.2.0+incompatible`
-- Fixed in: no fix published
+Vulnerability #1: [GO-2020-0017](https://pkg.go.dev/vuln/GO-2020-0017) — Authentication bypass in github.com/dgrijalva/jwt-go
 
 <details>
-<summary>1 example trace</summary>
+<summary>Details</summary>
 
-1. `main.go:11:29: nofix.main calls jwt.MapClaims.VerifyAudience`
+```
+  Module: github.com/dgrijalva/jwt-go
+    Found in: github.com/dgrijalva/jwt-go@v3.2.0+incompatible
+    Fixed in: no fix published
+    Example traces found:
+      #1: main.go:11:29: nofix.main calls jwt.MapClaims.VerifyAudience
+```
 
 </details>
