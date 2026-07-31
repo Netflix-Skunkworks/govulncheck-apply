@@ -18,48 +18,36 @@ import (
 	"go/token"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // failureList is what report writes above the modules it gave up on.
 const failureList = "Modules that could not be remediated:\n\n"
 
-// table builds a case's expectation from its rows, against the header report
-// writes once. No rows means no output at all.
-func table(rows ...string) string {
-	if len(rows) == 0 {
-		return ""
+// vulnerable is the frame an advisory is against, caller the frame in the scanned
+// module that reaches it, and invoke a frame between the two.
+var (
+	vulnerable = frame{
+		Module: "golang.org/x/text", Package: "golang.org/x/text/language", Function: "Parse",
+		Position: &token.Position{Filename: "language/parse.go", Line: 33, Column: 6},
 	}
-	return tableHeader + strings.Join(rows, "\n") + "\n"
-}
+	caller = frame{
+		Module: "example.com/foo", Package: "example.com/foo", Function: "main",
+		Position: &token.Position{Filename: "main.go", Line: 10, Column: 28},
+	}
+	invoke = frame{
+		Package: "google.golang.org/grpc", Receiver: "ClientConn", Function: "Invoke",
+	}
+	xtext = vuln{
+		osv: "GO-2021-0113", url: "https://pkg.go.dev/vuln/GO-2021-0113",
+		summary: "Panic in golang.org/x/text/language",
+		module:  "golang.org/x/text", found: "v0.3.5", fixedIn: "v0.3.7",
+		traces: [][]frame{{vulnerable, caller}},
+	}
+)
 
 func TestReport(t *testing.T) {
-	called := vuln{
-		osv:     "GO-2021-0113",
-		url:     "https://pkg.go.dev/vuln/GO-2021-0113",
-		summary: "Panic in golang.org/x/text/language",
-		module:  "golang.org/x/text",
-		found:   "v0.3.5",
-		fixedIn: "v0.3.7",
-		trace: []frame{
-			{Package: "golang.org/x/text/language", Function: "Parse"},
-			{Package: "example.com/foo", Function: "main",
-				Position: &token.Position{Filename: "main.go", Line: 10, Column: 28}},
-		},
-	}
-	// Which module reported an advisory is not in the row, so the same advisory
-	// from two modules renders the same way twice.
-	calledRow := "| [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 " +
-		`"Panic in golang.org/x/text/language")` + " | golang.org/x/text@v0.3.5 | v0.3.7 | " +
-		"main.go:10:28 foo.main → language.Parse |"
-	stdlibVuln := vuln{
-		osv:     "GO-2024-2687",
-		url:     "https://pkg.go.dev/vuln/GO-2024-2687",
-		module:  stdlib,
-		pkg:     "net/http",
-		found:   "v1.21.0",
-		fixedIn: "v1.21.9",
-	}
-
 	for _, tt := range []struct {
 		name    string
 		modules []moduleReport
@@ -70,72 +58,94 @@ func TestReport(t *testing.T) {
 			modules: []moduleReport{{dir: "."}, {dir: "sub"}},
 		},
 		{
-			name:    "a fixed advisory, with where it was reached from",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{called}}},
-			want:    table(calledRow),
+			name:    "an advisory the module's own code reaches",
+			modules: []moduleReport{{dir: ".", vulns: []vuln{xtext}}},
+			want: "#### Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)\n" +
+				"\nPanic in golang.org/x/text/language\n" +
+				"\n- Module: `golang.org/x/text`\n" +
+				"- Found in: `golang.org/x/text@v0.3.5`\n" +
+				"- Fixed in: `golang.org/x/text@v0.3.7`\n" +
+				"\n<details>\n<summary>1 example trace</summary>\n\n" +
+				"1. `main.go:10:28: foo.main calls language.Parse`\n" +
+				"\n</details>\n",
 		},
 		{
-			name:    "the standard library reads as a toolchain name, not a semver",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{stdlibVuln}}},
-			want: table("| [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687) | " +
-				"net/http@go1.21.0 | go1.21.9 | not called |"),
+			// The standard library is named as govulncheck names it, by the package
+			// rather than the stdlib module path, and at a toolchain version.
+			name: "a standard-library advisory the module only carries",
+			modules: []moduleReport{{dir: ".", vulns: []vuln{{
+				osv: "GO-2024-2687", url: "https://pkg.go.dev/vuln/GO-2024-2687",
+				summary: "Improper header parsing in net/http",
+				module:  stdlib, pkg: "net/http", found: "v1.21.0", fixedIn: "v1.21.9",
+			}}}},
+			want: "#### Vulnerability #1: [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)\n" +
+				"\nImproper header parsing in net/http\n" +
+				"\n- Standard library\n" +
+				"- Found in: `net/http@go1.21.0`\n" +
+				"- Fixed in: `net/http@go1.21.9`\n",
 		},
 		{
-			name: "what was left behind says so where the version would be",
+			name: "an advisory with no published fix, and one the fix did not take",
 			modules: []moduleReport{{dir: ".", vulns: []vuln{
 				{osv: "GO-1", module: "example.com/a", found: "v1.0.0", stillReported: true},
 				{osv: "GO-2", module: "example.com/b", found: "v1.0.0", fixedIn: "v1.1.0", stillReported: true},
 			}}},
-			want: table(
-				"| GO-1 | example.com/a@v1.0.0 | no fix published | not called |",
-				"| GO-2 | example.com/b@v1.0.0 | v1.1.0 (fix did not take) | not called |"),
-		},
-		{
-			// The version is formatted before it is decorated, or a standard-library
-			// advisory with no published fix would read as "gono fix published".
-			name: "a standard-library advisory with no published fix",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{
-				{osv: "GO-3", module: stdlib, found: "v1.21.0", stillReported: true},
-			}}},
-			want: table("| GO-3 | stdlib@go1.21.0 | no fix published | not called |"),
-		},
-		{
-			// A module-granularity finding names no package, so there is only the
-			// module to fall back on.
-			name: "the standard library falls back to its own name",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{
-				{osv: "GO-6", module: stdlib, found: "v1.21.0", fixedIn: "v1.21.9"},
-			}}},
-			want: table("| GO-6 | stdlib@go1.21.0 | go1.21.9 | not called |"),
+			want: "#### Vulnerability #1: GO-1\n" +
+				"\n- Module: `example.com/a`\n" +
+				"- Found in: `example.com/a@v1.0.0`\n" +
+				"- Fixed in: no fix published\n" +
+				"\n#### Vulnerability #2: GO-2\n" +
+				"\n- Module: `example.com/b`\n" +
+				"- Found in: `example.com/b@v1.0.0`\n" +
+				"- Fixed in: `example.com/b@v1.1.0` (fix did not take)\n",
 		},
 		{
 			// Minimal version selection can land above the version that fixes the
-			// advisory, and the row says so rather than naming the minimum alone.
-			name: "a version selected above the one that fixes it shows the move",
+			// advisory, so the version the run left is named where it differs.
+			name: "a version selected above the one that fixes it",
 			modules: []moduleReport{{dir: ".", vulns: []vuln{{
 				osv: "GO-5", module: "golang.org/x/crypto", found: "v0.48.0",
 				selected: "v0.53.0", fixedIn: "v0.52.0",
 			}}}},
-			want: table("| GO-5 | golang.org/x/crypto@v0.48.0 → v0.53.0 | v0.52.0 | not called |"),
+			want: "#### Vulnerability #1: GO-5\n" +
+				"\n- Module: `golang.org/x/crypto`\n" +
+				"- Found in: `golang.org/x/crypto@v0.48.0`\n" +
+				"- Fixed in: `golang.org/x/crypto@v0.52.0`\n" +
+				"- Selected: `golang.org/x/crypto@v0.53.0`\n",
 		},
 		{
-			name: "a row per module reporting it, and the modules that failed after",
-			modules: []moduleReport{
-				{dir: ".", vulns: []vuln{called}},
-				{dir: "broken", err: "govulncheck: exit status 1"},
-				{dir: "sub", vulns: []vuln{called}},
-			},
-			want: table(calledRow, calledRow) +
-				"\n" + failureList + "- `broken`: govulncheck: exit status 1\n",
-		},
-		{
-			name: "a quote in the advisory's prose cannot close its own title",
+			name: "every way an advisory is reached is listed",
 			modules: []moduleReport{{dir: ".", vulns: []vuln{{
-				osv: "GO-4", url: "https://example.com/GO-4", summary: `A "quoted" phrase`,
-				module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0",
+				osv: "GO-6", module: "google.golang.org/grpc", found: "v1.81.1", fixedIn: "v1.82.1",
+				traces: [][]frame{{vulnerable, invoke, caller}, {vulnerable, caller}},
 			}}}},
-			want: table("| [GO-4](https://example.com/GO-4 \"A 'quoted' phrase\") | " +
-				"example.com/a@v1.0.0 | v1.1.0 | not called |"),
+			want: "#### Vulnerability #1: GO-6\n" +
+				"\n- Module: `google.golang.org/grpc`\n" +
+				"- Found in: `google.golang.org/grpc@v1.81.1`\n" +
+				"- Fixed in: `google.golang.org/grpc@v1.82.1`\n" +
+				"\n<details>\n<summary>2 example traces</summary>\n\n" +
+				"1. `main.go:10:28: foo.main calls grpc.ClientConn.Invoke, which eventually calls language.Parse`\n" +
+				"2. `main.go:10:28: foo.main calls language.Parse`\n" +
+				"\n</details>\n",
+		},
+		{
+			// Numbering runs across the whole report, so two modules reporting the
+			// same advisory produce two entries rather than a repeated number.
+			name: "an entry per module reporting it, and the modules that failed after",
+			modules: []moduleReport{
+				{dir: ".", vulns: []vuln{{osv: "GO-7", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}}},
+				{dir: "broken", err: "govulncheck: exit status 1"},
+				{dir: "sub", vulns: []vuln{{osv: "GO-7", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}}},
+			},
+			want: "#### Vulnerability #1: GO-7\n" +
+				"\n- Module: `example.com/a`\n" +
+				"- Found in: `example.com/a@v1.0.0`\n" +
+				"- Fixed in: `example.com/a@v1.1.0`\n" +
+				"\n#### Vulnerability #2: GO-7\n" +
+				"\n- Module: `example.com/a`\n" +
+				"- Found in: `example.com/a@v1.0.0`\n" +
+				"- Fixed in: `example.com/a@v1.1.0`\n" +
+				"\n" + failureList + "- `broken`: govulncheck: exit status 1\n",
 		},
 		{
 			name:    "a failure alone is still worth reporting",
@@ -146,8 +156,8 @@ func TestReport(t *testing.T) {
 			// modfile.Parse reports a malformed go.mod as newline-joined errors,
 			// which would otherwise break the list open.
 			name:    "an error spanning lines stays on its bullet",
-			modules: []moduleReport{{dir: ".", err: "go.mod:3: unknown directive\ngo.mod:7: bad | version"}},
-			want:    failureList + "- `.`: go.mod:3: unknown directive go.mod:7: bad \\| version\n",
+			modules: []moduleReport{{dir: ".", err: "go.mod:3: unknown directive\ngo.mod:7: bad version"}},
+			want:    failureList + "- `.`: go.mod:3: unknown directive go.mod:7: bad version\n",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -155,50 +165,38 @@ func TestReport(t *testing.T) {
 			if err := report(&out, tt.modules); err != nil {
 				t.Fatalf("report(%+v) failed: %v", tt.modules, err)
 			}
-			if got := out.String(); got != tt.want {
-				t.Errorf("report() =\n%s\nwant:\n%s", got, tt.want)
+			if diff := cmp.Diff(out.String(), tt.want); diff != "" {
+				t.Errorf("report() differs (-got +want):\n%s", diff)
 			}
 		})
 	}
 }
 
-// TestCell covers the two characters that would break a table out of its row.
-func TestCell(t *testing.T) {
+// TestOneLine covers what would break a bullet out of its line.
+func TestOneLine(t *testing.T) {
 	for _, tt := range []struct{ in, want string }{
 		{"plain", "plain"},
-		{"a | b", `a \| b`},
 		{"two\nlines", "two lines"},
 		{"  padded\t", "padded"},
 	} {
-		if got := cell(tt.in); got != tt.want {
-			t.Errorf("cell(%q) = %q, want %q", tt.in, got, tt.want)
+		if got := oneLine(tt.in); got != tt.want {
+			t.Errorf("oneLine(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }
 
+// TestCallSite covers govulncheck's own wording for a call trace, so that a reader
+// of both reports sees the same sentence.
 func TestCallSite(t *testing.T) {
-	vulnerable := frame{
-		Module:   "golang.org/x/text",
-		Package:  "golang.org/x/text/language",
-		Function: "Parse",
-		Position: &token.Position{Filename: "language/parse.go", Line: 33, Column: 6},
-	}
-	caller := frame{
-		Module:   "example.com/foo",
-		Package:  "example.com/foo",
-		Function: "main",
-		Position: &token.Position{Filename: "main.go", Line: 10, Column: 28},
-	}
-
 	for _, tt := range []struct {
 		name  string
 		trace []frame
 		want  string
 	}{
 		{
-			name:  "the outermost frame is the call, trace[0] is what it reaches",
+			name:  "a direct call names the two ends",
 			trace: []frame{vulnerable, caller},
-			want:  "main.go:10:28 foo.main → language.Parse",
+			want:  "main.go:10:28: foo.main calls language.Parse",
 		},
 		{
 			name: "a pointer receiver reads as a call on it, and a closure as its function",
@@ -206,25 +204,19 @@ func TestCallSite(t *testing.T) {
 				Package: "example.com/foo/handler", Receiver: "*Server", Function: "Handle$1",
 				Position: &token.Position{Filename: "handler/server.go", Line: 7, Column: 2},
 			}},
-			want: "handler/server.go:7:2 handler.Server.Handle → language.Parse",
+			want: "handler/server.go:7:2: handler.Server.Handle calls language.Parse",
 		},
 		{
 			// Naming only the two ends would read as a direct call that is not
-			// there, so the frame the caller reaches for is named too.
-			name: "a deeper trace names what the caller calls to get there",
-			trace: []frame{vulnerable, {
-				Package: "google.golang.org/grpc", Receiver: "ClientConn", Function: "Invoke",
-			}, caller},
-			want: "main.go:10:28 foo.main → grpc.ClientConn.Invoke → language.Parse",
+			// there, so what the caller reaches for is named too.
+			name:  "a deeper trace names what the caller calls to get there",
+			trace: []frame{vulnerable, invoke, caller},
+			want:  "main.go:10:28: foo.main calls grpc.ClientConn.Invoke, which eventually calls language.Parse",
 		},
 		{
-			name: "the frames past that one are stood for by an ellipsis",
-			trace: []frame{vulnerable,
-				{Package: "example.com/deep", Function: "inner"},
-				{Package: "google.golang.org/grpc", Receiver: "ClientConn", Function: "Invoke"},
-				caller,
-			},
-			want: "main.go:10:28 foo.main → grpc.ClientConn.Invoke → … → language.Parse",
+			name:  "the frames past that one are not named",
+			trace: []frame{vulnerable, {Package: "example.com/deep", Function: "inner"}, invoke, caller},
+			want:  "main.go:10:28: foo.main calls grpc.ClientConn.Invoke, which eventually calls language.Parse",
 		},
 		{
 			// The module and package granularities report a single frame and no

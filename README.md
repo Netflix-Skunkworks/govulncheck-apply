@@ -39,21 +39,44 @@ passes is reported as an error.
 `cmd/modfix/scan.go`, built under a toolchain at least as new as the highest `go`
 directive it will scan. `-db` points it at another vulnerability database.
 
-Every advisory any pass reported is printed as one markdown table, ready for a pull
-request description, and nothing at all when there is nothing to report:
+Every advisory any pass reported is printed as markdown, ready for a pull request
+description, and nothing at all when there is nothing to report. The layout is
+`govulncheck`'s own, an entry per advisory: a summary and a call trace are each a
+sentence, and a table of sentences is wider than a pull request shows without
+scrolling.
 
 ```markdown
-| Advisory | Dependency | Fixed in | Reached from |
-| --- | --- | --- | --- |
-| [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113 "Out-of-bounds read in golang.org/x/text") | golang.org/x/text@v0.3.5 → v0.3.7 | v0.3.7 | main.go:12:28 foo.main → language.Parse |
-| [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687 "Improper header parsing in net/http") | net/http@go1.21.0 → go1.21.9 | go1.21.9 | sub/server.go:31:9 sub.Serve → http.Get |
+#### Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)
+
+Out-of-bounds read in golang.org/x/text
+
+- Module: `golang.org/x/text`
+- Found in: `golang.org/x/text@v0.3.5`
+- Fixed in: `golang.org/x/text@v0.3.7`
+- Selected: `golang.org/x/text@v0.3.8`
+
+<details>
+<summary>2 example traces</summary>
+
+1. `main.go:12:28: foo.main calls language.Parse`
+2. `sub/lib.go:9:14: sub.Tag calls jwt.MapClaims.Valid, which eventually calls language.Parse`
+
+</details>
 ```
 
-"Fixed in" says what became of the advisory: the version that fixes it, `no fix
-published`, or that version and `(fix did not take)` where it survived the upgrade,
-which a `replace` directive can cause. A module that cannot be scanned is listed
-under the table and on stderr, and the run still exits 0, because a failure reads
-as "nothing changed" to whatever commits the result.
+A standard-library advisory reads `Standard library` in place of the module, and
+names the package at a toolchain version — `net/http@go1.21.9` — as `govulncheck`
+does. `Selected` appears only where minimal version selection landed above the
+version that fixes the advisory, so the entry does not disagree with the diff.
+`Fixed in` reads `no fix published`, or carries `(fix did not take)` where the
+advisory survived the upgrade, which a `replace` directive can cause.
+
+Traces are folded away because one advisory can be reached a dozen ways. An
+advisory the module only carries has none, and no `<details>` at all.
+
+A module that cannot be scanned is listed at the end and on stderr, and the run
+still exits 0, because a failure reads as "nothing changed" to whatever commits the
+result.
 
 ## dockerfilefix
 

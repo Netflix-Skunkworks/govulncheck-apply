@@ -147,10 +147,11 @@ func parse(r io.Reader) (fixes, map[string]vuln, error) {
 		if v.pkg == "" {
 			v.pkg = vulnerable.Package
 		}
-		// Only the called-function granularity carries a trace worth rendering, and
-		// one example of it is enough, as in govulncheck's own report.
-		if len(f.Trace) > 1 && v.trace == nil {
-			v.trace = f.Trace
+		// Only the called-function granularity carries a trace worth rendering. Every
+		// one is kept: an advisory can be reached a dozen ways, and which of them a
+		// reader recognizes is not for this to guess.
+		if len(f.Trace) > 1 {
+			v.traces = append(v.traces, f.Trace)
 		}
 		if vulnerable.Module == "" || f.FixedVersion == "" {
 			continue
