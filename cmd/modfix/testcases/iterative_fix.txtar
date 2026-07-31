@@ -52,7 +52,33 @@ index bbd33e8..dee227d 100644
 +golang.org/x/text v0.3.8 h1:nAL+RVCQ9uMn3vJZbV+MRnydTJFPf8qqY42YiA6MrqY=
 +golang.org/x/text v0.3.8/go.mod h1:E6s5w1FMmriuDzIBO73fBruAKo1PCIq6d2Q6DHfQ8WQ=
 -- want_report.md --
-| Advisory | Dependency | Fixed in | Reached from |
-| --- | --- | --- | --- |
-| [GO-TEST-0001](https://pkg.go.dev/vuln/GO-TEST-0001 "Panic on malformed language tag in golang.org/x/text") | golang.org/x/text@v0.3.5 → v0.3.8 | v0.3.7 | main.go:10:28 iter.main → language.Parse |
-| [GO-TEST-0002](https://pkg.go.dev/vuln/GO-TEST-0002 "Denial of service in golang.org/x/text") | golang.org/x/text@v0.3.7 → v0.3.8 | v0.3.8 | main.go:10:28 iter.main → language.Parse |
+#### Vulnerability #1: [GO-TEST-0001](https://pkg.go.dev/vuln/GO-TEST-0001)
+
+Panic on malformed language tag in golang.org/x/text
+
+- Module: `golang.org/x/text`
+- Found in: `golang.org/x/text@v0.3.5`
+- Fixed in: `golang.org/x/text@v0.3.7`
+- Selected: `golang.org/x/text@v0.3.8`
+
+<details>
+<summary>1 example trace</summary>
+
+1. `main.go:10:28: iter.main calls language.Parse`
+
+</details>
+
+#### Vulnerability #2: [GO-TEST-0002](https://pkg.go.dev/vuln/GO-TEST-0002)
+
+Denial of service in golang.org/x/text
+
+- Module: `golang.org/x/text`
+- Found in: `golang.org/x/text@v0.3.7`
+- Fixed in: `golang.org/x/text@v0.3.8`
+
+<details>
+<summary>1 example trace</summary>
+
+1. `main.go:10:28: iter.main calls language.Parse`
+
+</details>

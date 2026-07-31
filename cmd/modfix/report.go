@@ -30,18 +30,18 @@ const stdlib = "stdlib"
 
 // vuln is what the scans of one module said about one advisory: the advisory
 // itself, the version of the vulnerable module found, the version that fixes it,
-// and the trace to the call that reaches it.
+// and every call that reaches it.
 type vuln struct {
 	osv           string
 	url           string
-	summary       string  // the advisory's own one-line prose, if it publishes one
-	module        string  // the vulnerable module's path, or stdlib
-	pkg           string  // the vulnerable package, where a finding named one
-	found         string  // the version of it the first scan found
-	selected      string  // the version the run left selected, empty if unchanged
-	fixedIn       string  // the version that fixes it, empty if none is published
-	trace         []frame // the call that reaches it, empty if the module makes none
-	stillReported bool    // whether the last pass reported it again
+	summary       string    // the advisory's own one-line prose, if it publishes one
+	module        string    // the vulnerable module's path, or stdlib
+	pkg           string    // the vulnerable package, where a finding named one
+	found         string    // the version of it the first scan found
+	selected      string    // the version the run left selected, empty if unchanged
+	fixedIn       string    // the version that fixes it, empty if none is published
+	traces        [][]frame // the calls that reach it, empty if the module makes none
+	stillReported bool      // whether the last pass reported it again
 }
 
 // The two ways a vulnerability can be left behind: the database publishes no
@@ -70,68 +70,117 @@ func (m moduleReport) withError(err error) moduleReport {
 	return m
 }
 
-// tableHeader is written once, before the first row there is to write. The
-// advisory's prose is not a column of its own: a sentence per row made the table
-// wider than a pull request shows without scrolling, so it rides along as the
-// link's title instead.
-const tableHeader = "| Advisory | Dependency | Fixed in | Reached from |\n" +
-	"| --- | --- | --- | --- |\n"
-
-// report writes every module's outcome as one markdown table, for a pull request
+// report writes every module's outcome as markdown, for a pull request
 // description or a build log to carry as it is. Nothing is written when there is
-// nothing to say, so that a caller can test the output for emptiness rather than
-// paste an empty table.
+// nothing to say, so that a caller can test the output for emptiness.
+//
+// The layout is govulncheck's own, an entry per advisory rather than a row: a
+// summary and a call trace are each a sentence, and a table of sentences is wider
+// than a pull request shows without scrolling.
 func report(w io.Writer, modules []moduleReport) error {
-	var table, failures strings.Builder
+	var out, failures strings.Builder
+	found := 0
 	for _, m := range modules {
 		if m.err != "" {
-			fmt.Fprintf(&failures, "- `%s`: %s\n", cell(m.dir), cell(m.err))
+			fmt.Fprintf(&failures, "- `%s`: %s\n", oneLine(m.dir), oneLine(m.err))
 			continue
 		}
 		for _, v := range m.vulns {
-			if table.Len() == 0 {
-				table.WriteString(tableHeader)
+			found++
+			if found > 1 {
+				out.WriteString("\n")
 			}
-			table.WriteString(row(v))
+			out.WriteString(entry(found, v))
 		}
 	}
-	if table.Len() == 0 && failures.Len() == 0 {
+	if out.Len() == 0 && failures.Len() == 0 {
 		return nil
 	}
 	if failures.Len() > 0 {
-		if table.Len() > 0 {
-			table.WriteString("\n")
+		if out.Len() > 0 {
+			out.WriteString("\n")
 		}
-		table.WriteString("Modules that could not be remediated:\n\n")
-		table.WriteString(failures.String())
+		out.WriteString("Modules that could not be remediated:\n\n")
+		out.WriteString(failures.String())
 	}
-	_, err := io.WriteString(w, table.String())
+	_, err := io.WriteString(w, out.String())
 	return err
 }
 
-// row renders one advisory. Which module of the repository reported it is not a
-// column: almost every repository has one, and a column of repeated "." earns no
-// room. A call site names a file, which places the row in a repository that has
-// more than one.
-//
-// The version that fixes the advisory carries what became of it, so that the
-// exception is stated where a reader is already looking for the version rather
-// than in a column of repeated "fixed".
-func row(v vuln) string {
-	fixedIn := toolchainName(v.module, v.fixedIn)
-	switch {
-	case v.fixedIn == "":
-		fixedIn = noFix
-	case v.stillReported:
-		fixedIn += " (" + fixNotTaken + ")"
+// entry renders one advisory, numbered across the whole report the way
+// govulncheck numbers its own. Which module of the repository reported it is not
+// named: almost every repository has one, and a call trace names a file, which
+// places the entry in a repository that has more than one.
+func entry(n int, v vuln) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "#### Vulnerability #%d: %s\n", n, advisory(v))
+	if v.summary != "" {
+		fmt.Fprintf(&b, "\n%s\n", oneLine(v.summary))
 	}
-	reached := callSite(v.trace)
-	if reached == "" {
-		reached = "not called"
+	b.WriteString("\n")
+	if v.module == stdlib {
+		b.WriteString("- Standard library\n")
+	} else {
+		fmt.Fprintf(&b, "- Module: `%s`\n", oneLine(v.module))
 	}
-	return fmt.Sprintf("| %s | %s | %s | %s |\n",
-		advisory(v), cell(vulnerableModule(v)+"@"+upgrade(v)),
-		cell(fixedIn), cell(reached))
+	fmt.Fprintf(&b, "- Found in: `%s`\n", oneLine(at(v, v.found)))
+	fmt.Fprintf(&b, "- Fixed in: %s\n", fixedIn(v))
+	// The version that fixes an advisory is a minimum, so minimal version selection
+	// can land above it, and naming only the minimum next to a diff that says
+	// otherwise reads as a mistake.
+	if v.selected != "" && v.selected != v.found && v.selected != v.fixedIn {
+		fmt.Fprintf(&b, "- Selected: `%s`\n", oneLine(at(v, v.selected)))
+	}
+	b.WriteString(traces(v.traces))
+	return b.String()
+}
+
+// fixedIn says what became of the advisory: the version that fixes it, that no
+// version does, or that one does and the upgrade did not shake the vulnerable
+// version out of the build list anyway.
+func fixedIn(v vuln) string {
+	if v.fixedIn == "" {
+		return noFix
+	}
+	in := "`" + oneLine(at(v, v.fixedIn)) + "`"
+	if v.stillReported {
+		in += " (" + fixNotTaken + ")"
+	}
+	return in
+}
+
+// at names what carries the vulnerability at one of its versions, as govulncheck
+// writes it.
+func at(v vuln, version string) string {
+	return vulnerableModule(v) + "@" + toolchainName(v.module, version)
+}
+
+// traces renders the calls that reach the vulnerable symbol, folded away because
+// one advisory can be reached a dozen ways and the list is longer than the entry
+// it belongs to. Nothing is written for an advisory the module only carries.
+func traces(traces [][]frame) string {
+	var reached []string
+	for _, trace := range traces {
+		if call := callSite(trace); call != "" {
+			reached = append(reached, call)
+		}
+	}
+	if len(reached) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n<details>\n<summary>%d example trace", len(reached))
+	if len(reached) > 1 {
+		b.WriteString("s")
+	}
+	b.WriteString("</summary>\n\n")
+	for i, call := range reached {
+		// Wrapped whole, so that a receiver's star or an underscore in a symbol is
+		// not read as markdown.
+		fmt.Fprintf(&b, "%d. `%s`\n", i+1, call)
+	}
+	b.WriteString("\n</details>\n")
+	return b.String()
 }
 
 // vulnerableModule names what carries the vulnerability. For the standard library
@@ -144,19 +193,6 @@ func vulnerableModule(v vuln) string {
 	return v.module
 }
 
-// upgrade renders what happened to the version of the vulnerable module: the one
-// the scan found, and the one the run went on to select where those differ. The
-// version that fixes an advisory is a minimum, so minimal version selection can
-// land above it, and reporting only the minimum next to a diff that names a higher
-// version reads as a mistake.
-func upgrade(v vuln) string {
-	found := toolchainName(v.module, v.found)
-	if v.selected == "" || v.selected == v.found {
-		return found
-	}
-	return found + " → " + toolchainName(v.module, v.selected)
-}
-
 // toolchainName renders the version of the vulnerable module. govulncheck reports
 // the standard library's as a semver, where a toolchain name is what a reader of a
 // go directive recognizes.
@@ -167,40 +203,31 @@ func toolchainName(module, v string) string {
 	return "go" + strings.TrimPrefix(v, "v")
 }
 
-// advisory links the OSV id to the entry the database gave a URL for, titled with
-// the advisory's own prose so that a reader can have it without the table growing
-// a column for it.
+// advisory links the OSV id to the entry the database gave a URL for, so that a
+// reader can reach the advisory itself without a line of its own for the address.
 func advisory(v vuln) string {
 	if v.url == "" {
-		return cell(v.osv)
+		return oneLine(v.osv)
 	}
-	link := "[" + cell(v.osv) + "](" + cell(v.url)
-	if v.summary != "" {
-		// A title is quoted, so the quotes in it cannot be.
-		link += ` "` + strings.ReplaceAll(cell(v.summary), `"`, "'") + `"`
-	}
-	return link + ")"
+	return "[" + oneLine(v.osv) + "](" + oneLine(v.url) + ")"
 }
 
-// cell makes text safe to sit in a markdown table: a pipe would start a column,
-// and a newline would end the row. An advisory's summary and a go command's error
-// are the two that carry either.
-func cell(text string) string {
-	text = strings.ReplaceAll(text, "|", `\|`)
+// oneLine folds text onto a single line, so that it cannot break out of the bullet
+// or heading it is written into. An advisory's summary and a go command's error are
+// the two that arrive spanning lines.
+func oneLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
 
-// callSite renders how a module's own code reaches a vulnerable symbol. The last
-// frame of the trace is the call in that code, trace[0] is the symbol it reaches,
-// and the frame between them is what it calls to get there. Only the
-// called-function granularity carries the positions, so the coarser findings
-// render as nothing.
+// callSite renders how a module's own code reaches a vulnerable symbol, in
+// govulncheck's own words. The last frame of the trace is the call in that code,
+// trace[0] is the symbol it reaches, and the frame between them is what it calls
+// to get there. Only the called-function granularity carries the positions, so the
+// coarser findings render as nothing.
 //
-// The frames in between are stood for by an ellipsis rather than dropped, because
-// naming only the two ends reads as a call that is not there: it is
-// `grpc.ClientConn.Invoke` that reaches the vulnerable symbol, not the protobuf
-// method that called it. govulncheck's own report says "which eventually calls"
-// for the same reason.
+// What the caller reaches for is named rather than left out, because naming only
+// the two ends reads as a call that is not there: it is grpc.ClientConn.Invoke that
+// reaches the vulnerable symbol, not the protobuf method that called it.
 func callSite(trace []frame) string {
 	if len(trace) < 2 {
 		return ""
@@ -209,15 +236,11 @@ func callSite(trace []frame) string {
 	if caller.Position == nil || !caller.Position.IsValid() {
 		return ""
 	}
-	reached := []string{symbol(caller)}
-	if len(trace) > 2 {
-		reached = append(reached, symbol(trace[len(trace)-2]))
+	if len(trace) == 2 {
+		return fmt.Sprintf("%s: %s calls %s", caller.Position, symbol(caller), symbol(trace[0]))
 	}
-	if len(trace) > 3 {
-		reached = append(reached, "…")
-	}
-	reached = append(reached, symbol(trace[0]))
-	return fmt.Sprintf("%s %s", caller.Position, strings.Join(reached, " → "))
+	return fmt.Sprintf("%s: %s calls %s, which eventually calls %s",
+		caller.Position, symbol(caller), symbol(trace[len(trace)-2]), symbol(trace[0]))
 }
 
 // symbol names a frame's function the way govulncheck's own report does, so that

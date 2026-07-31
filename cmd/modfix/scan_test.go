@@ -57,6 +57,9 @@ func TestParse(t *testing.T) {
 {"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [
   {"module": "golang.org/x/text", "version": "v0.3.5", "package": "golang.org/x/text/language", "function": "Parse", "position": {"filename": "language/parse.go", "line": 33, "column": 6}},
   {"module": "example.com/m", "package": "example.com/m", "function": "main", "position": {"filename": "main.go", "line": 10, "column": 28}}]}}
+{"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [
+  {"module": "golang.org/x/text", "version": "v0.3.5", "package": "golang.org/x/text/language", "function": "Compose", "position": {"filename": "language/compose.go", "line": 12, "column": 6}},
+  {"module": "example.com/m", "package": "example.com/m", "function": "tag", "position": {"filename": "tag.go", "line": 4, "column": 9}}]}}
 {"finding": {"osv": "GO-TEST-0002", "fixed_version": "v0.3.8", "trace": [{"module": "golang.org/x/text", "version": "v0.3.7"}]}}
 {"finding": {"osv": "GO-TEST-0003", "trace": [{"module": "example.com/unfixable", "version": "v1.0.0"}]}}
 {"osv": {"id": "GO-TEST-0004", "database_specific": {"url": "https://pkg.go.dev/vuln/GO-TEST-0004"}}}
@@ -68,14 +71,16 @@ func TestParse(t *testing.T) {
 		modules:   map[string]string{"golang.org/x/text": "v0.3.8"},
 		goVersion: "v1.21.9",
 	}
-	// The called-function granularity is the only one whose trace is kept, and
-	// callSite renders it; TestCallSite covers that rendering.
+	// The called-function granularity is the only one whose traces are kept, and
+	// every one of them is: govulncheck emits a finding per reachable symbol, and
+	// which of them a reader recognizes is not for parse to guess. callSite renders
+	// each; TestCallSite covers that rendering.
 	wantReported := map[string]vuln{
 		"GO-TEST-0001": {
 			osv: "GO-TEST-0001", url: "https://pkg.go.dev/vuln/GO-TEST-0001",
 			summary: "Panic in x/text", module: "golang.org/x/text",
 			pkg: "golang.org/x/text/language", found: "v0.3.5", fixedIn: "v0.3.7",
-			trace: []frame{
+			traces: [][]frame{{
 				{
 					Module: "golang.org/x/text", Version: "v0.3.5",
 					Package: "golang.org/x/text/language", Function: "Parse",
@@ -85,7 +90,17 @@ func TestParse(t *testing.T) {
 					Module: "example.com/m", Package: "example.com/m", Function: "main",
 					Position: &token.Position{Filename: "main.go", Line: 10, Column: 28},
 				},
-			},
+			}, {
+				{
+					Module: "golang.org/x/text", Version: "v0.3.5",
+					Package: "golang.org/x/text/language", Function: "Compose",
+					Position: &token.Position{Filename: "language/compose.go", Line: 12, Column: 6},
+				},
+				{
+					Module: "example.com/m", Package: "example.com/m", Function: "tag",
+					Position: &token.Position{Filename: "tag.go", Line: 4, Column: 9},
+				},
+			}},
 		},
 		"GO-TEST-0002": {osv: "GO-TEST-0002", module: "golang.org/x/text", found: "v0.3.7", fixedIn: "v0.3.8"},
 		"GO-TEST-0003": {osv: "GO-TEST-0003", module: "example.com/unfixable", found: "v1.0.0"},
