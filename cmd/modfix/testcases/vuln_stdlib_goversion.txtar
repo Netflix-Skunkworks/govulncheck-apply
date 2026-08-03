@@ -35,7 +35,7 @@ index 9b981c3..d7e9510 100644
 -- want_report.md --
 govulncheck found 1 vulnerability; this PR fixes 1:
 
-**Vulnerability #1: [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)**: HTTP/2 rapid reset can cause excessive work in net/http
+**[GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)**: HTTP/2 rapid reset can cause excessive work in net/http
 
 <details>
 <summary>Details</summary>

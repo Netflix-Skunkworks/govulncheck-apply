@@ -65,7 +65,7 @@ func TestReport(t *testing.T) {
 			name:    "an advisory the module's own code reaches",
 			modules: []moduleReport{{dir: ".", vulns: []vuln{xtext}}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
-				"**Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Panic in golang.org/x/text/language\n\n" +
+				"**[GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Panic in golang.org/x/text/language\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: golang.org/x/text\n" +
 				"    Found in: golang.org/x/text@v0.3.5\n" +
@@ -84,7 +84,7 @@ func TestReport(t *testing.T) {
 				module:  stdlib, pkg: "net/http", found: "v1.21.0", fixedIn: "v1.21.9",
 			}}}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
-				"**Vulnerability #1: [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)**: Improper header parsing in net/http\n\n" +
+				"**[GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)**: Improper header parsing in net/http\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Standard library\n" +
 				"    Found in: net/http@go1.21.0\n" +
@@ -101,7 +101,7 @@ func TestReport(t *testing.T) {
 				{osv: "GO-2", module: "example.com/b", found: "v1.0.0", fixedIn: "v1.1.0", stillReported: true},
 			}}},
 			want: "govulncheck found 2 vulnerabilities; this PR fixes 0, 1 does not have a fix ready yet, 1 unable to fix:\n\n" +
-				"**Vulnerability #1: GO-1**\n\n" +
+				"**GO-1**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: example.com/a\n" +
 				"    Found in: example.com/a@v1.0.0\n" +
@@ -111,7 +111,7 @@ func TestReport(t *testing.T) {
 				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
 				"```\n\n</details>\n" +
 				"\n" +
-				"**Vulnerability #2: GO-2**\n\n" +
+				"**GO-2**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: example.com/b\n" +
 				"    Found in: example.com/b@v1.0.0\n" +
@@ -130,7 +130,7 @@ func TestReport(t *testing.T) {
 				selected: "v0.53.0", fixedIn: "v0.52.0",
 			}}}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
-				"**Vulnerability #1: GO-5**\n\n" +
+				"**GO-5**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: golang.org/x/crypto\n" +
 				"    Found in: golang.org/x/crypto@v0.48.0\n" +
@@ -148,7 +148,7 @@ func TestReport(t *testing.T) {
 				traces: [][]frame{{vulnerable, invoke, caller}, {vulnerable, caller}},
 			}}}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
-				"**Vulnerability #1: GO-6**\n\n" +
+				"**GO-6**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: google.golang.org/grpc\n" +
 				"    Found in: google.golang.org/grpc@v1.81.1\n" +
@@ -168,7 +168,7 @@ func TestReport(t *testing.T) {
 				traces: [][]frame{{vulnerable, caller}, {compose, caller}},
 			}}}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
-				"**Vulnerability #1: GO-9**\n\n" +
+				"**GO-9**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: golang.org/x/text\n" +
 				"    Found in: golang.org/x/text@v0.3.5\n" +
@@ -191,7 +191,7 @@ func TestReport(t *testing.T) {
 				},
 			}}}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
-				"**Vulnerability #1: GO-8**\n\n" +
+				"**GO-8**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: example.com/a\n" +
 				"    Found in: example.com/a@v1.0.0\n" +
@@ -201,8 +201,8 @@ func TestReport(t *testing.T) {
 				"```\n\n</details>\n",
 		},
 		{
-			// Numbering runs across the whole report, so two modules reporting the
-			// same advisory produce two entries rather than a repeated number.
+			// Each module's outcome is reported on its own, so two modules
+			// reporting the same advisory produce an entry each.
 			name: "an entry per module reporting it, and the modules that failed after",
 			modules: []moduleReport{
 				{dir: ".", vulns: []vuln{{osv: "GO-7", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}}},
@@ -210,7 +210,7 @@ func TestReport(t *testing.T) {
 				{dir: "sub", vulns: []vuln{{osv: "GO-7", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}}},
 			},
 			want: "govulncheck found 2 vulnerabilities; this PR fixes 2:\n\n" +
-				"**Vulnerability #1: GO-7**\n\n" +
+				"**GO-7**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: example.com/a\n" +
 				"    Found in: example.com/a@v1.0.0\n" +
@@ -220,7 +220,7 @@ func TestReport(t *testing.T) {
 				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
 				"```\n\n</details>\n" +
 				"\n" +
-				"**Vulnerability #2: GO-7**\n\n" +
+				"**GO-7**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
 				"  Module: example.com/a\n" +
 				"    Found in: example.com/a@v1.0.0\n" +

@@ -98,7 +98,7 @@ index bbd33e8..1f78e03 100644
 -- want_report.md --
 govulncheck found 2 vulnerabilities; this PR fixes 2:
 
-**Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
+**[GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
 
 <details>
 <summary>Details</summary>
@@ -113,7 +113,7 @@ govulncheck found 2 vulnerabilities; this PR fixes 2:
 
 </details>
 
-**Vulnerability #2: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
+**[GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
 
 <details>
 <summary>Details</summary>

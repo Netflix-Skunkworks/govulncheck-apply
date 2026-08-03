@@ -48,7 +48,7 @@ survives and no symbol is read as markdown:
 ````markdown
 govulncheck found 2 vulnerabilities; this PR fixes 2:
 
-**Vulnerability #1: [GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
+**[GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
 
 <details>
 <summary>Details</summary>
@@ -65,7 +65,7 @@ govulncheck found 2 vulnerabilities; this PR fixes 2:
 
 </details>
 
-**Vulnerability #2: [GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)**: Improper header parsing in net/http
+**[GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)**: Improper header parsing in net/http
 
 <details>
 <summary>Details</summary>

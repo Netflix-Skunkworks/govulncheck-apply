@@ -92,7 +92,7 @@ func report(w io.Writer, modules []moduleReport) error {
 			if len(all) > 1 {
 				entries.WriteString("\n")
 			}
-			entries.WriteString(entry(len(all), v))
+			entries.WriteString(entry(v))
 		}
 	}
 	if len(all) == 0 && failures.Len() == 0 {
@@ -153,19 +153,18 @@ func agree(n int, one, many string) string {
 	return many
 }
 
-// entry renders one advisory, numbered across the whole report the way govulncheck
-// numbers its own. Which module of the repository reported it is not named: almost
-// every repository has one, and a call trace names a file, which places the entry
-// in a repository that has more than one.
+// entry renders one advisory. Which module of the repository reported it is not
+// named: almost every repository has one, and a call trace names a file, which
+// places the entry in a repository that has more than one.
 //
 // The advisory, its link and its prose are a line of their own rather than the
 // summary of the fold, so that the list reads without opening anything and the link
 // is a link rather than half of a control. What is folded away is what govulncheck
 // prints under the heading, laid out as govulncheck lays it out, in a code block so
 // that the indentation survives and no symbol is read as markdown.
-func entry(n int, v vuln) string {
+func entry(v vuln) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "**Vulnerability #%d: %s**", n, advisory(v))
+	fmt.Fprintf(&b, "**%s**", advisory(v))
 	if v.summary != "" {
 		fmt.Fprintf(&b, ": %s", oneLine(v.summary))
 	}
