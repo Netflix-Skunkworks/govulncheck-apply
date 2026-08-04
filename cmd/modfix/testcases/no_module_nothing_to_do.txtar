@@ -1,0 +1,21 @@
+# A repository with no module of its own. The only go.mod here is vendored, which
+# belongs to another module and is not this repository's to edit, so the walk skips
+# it and there is nothing left to scan.
+#
+# The run has to succeed and print nothing. Failing instead would stop a caller
+# that runs this over whatever it is pointed at, for a repository it could never
+# have serviced: one that is not Go, or that predates modules and vendors by hand.
+-- main.go --
+package main
+
+func main() {}
+-- vendor/example.com/dep/go.mod --
+module example.com/dep
+
+go 1.25.0
+-- vendor/example.com/dep/dep.go --
+package dep
+
+func Do() {}
+-- want_diff.txt --
+-- want_report.md --
