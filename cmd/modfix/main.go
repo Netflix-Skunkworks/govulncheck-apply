@@ -61,7 +61,8 @@ func remediate() error {
 		return err
 	}
 	if len(dirs) == 0 {
-		return errors.New("no go.mod found anywhere under the working directory")
+		fmt.Fprintln(os.Stderr, "no go.mod found anywhere under the working directory; nothing to do")
+		return nil
 	}
 
 	// We install govulncheck ourselves so that we can control the version. It
