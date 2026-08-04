@@ -1,16 +1,16 @@
 // Copyright 2026 Netflix, Inc.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//  http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
 
 package main
 
@@ -56,13 +56,7 @@ func installGovulncheck(bin string, dirs []string) (string, error) {
 }
 
 // toolchain returns the GOTOOLCHAIN to build govulncheck under, given the
-// highest go directive to be scanned and the local Go version. govulncheck
-// type-checks with the go/types compiled into it, so it has to be built by a
-// toolchain at least as new as the highest go directive it will scan. Every
-// answer is a +auto floor rather than a pin, leaving the go command free to
-// upgrade past it for govulncheck's own go directive. A floor at or below the
-// local Go version names the local toolchain, which already scans every module
-// here; naming its version instead would only fetch a second copy of it.
+// highest go directive to be scanned and the local Go version.
 func toolchain(highest, local string) string {
 	if highest == "" || !gomod.Higher(highest, local) {
 		return "local+auto"
@@ -72,7 +66,8 @@ func toolchain(highest, local string) string {
 
 // localGoVersion returns the version of the toolchain bundled with the go
 // command on PATH, e.g. "1.26.0". GOTOOLCHAIN=local keeps the answer from being
-// whatever version an ambient setting or a go directive would switch to instead.
+// whatever version an ambient setting or a go directive would switch to
+// instead.
 func localGoVersion() (string, error) {
 	cmd := exec.Command("go", "env", "GOVERSION")
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
@@ -95,10 +90,11 @@ func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 	}
 	cmd := exec.Command(govulncheck, append(args, "./...")...)
 	cmd.Dir = dir
-	// go.work.sum holds hashes that are not in the workspace modules' own go.sum
-	// files, and GOWORK=off does not consult it, so loading the packages fails
-	// without -mod=mod to let the go command write the hashes it needs.
-	// govulncheck is not a go subcommand, so GOFLAGS is the only way to reach it.
+	// go.work.sum holds hashes that are not in the workspace modules' own
+	// go.sum files, and GOWORK=off does not consult it, so loading the packages
+	// fails without -mod=mod to let the go command write the hashes it needs.
+	// govulncheck is not a go subcommand, so GOFLAGS is the only way to reach
+	// it.
 	cmd.Env = append(goEnv(), "GOFLAGS=-mod=mod")
 	cmd.Stderr = os.Stderr
 	// With -json, govulncheck exits 0 whether or not it found anything, so a
@@ -142,21 +138,22 @@ func parse(r io.Reader) (fixes, map[string]vuln, error) {
 		if f.FixedVersion != "" {
 			v.fixedIn = f.FixedVersion
 		}
-		// Only the package and called-function granularities name a package, and
-		// the module-granularity finding can arrive first.
+		// Only the package and called-function granularities name a package,
+		// and the module-granularity finding can arrive first.
 		if v.pkg == "" {
 			v.pkg = vulnerable.Package
 		}
-		// Only the called-function granularity carries a trace worth rendering. Every
-		// one is kept: an advisory can be reached a dozen ways, and which of them a
-		// reader recognizes is not for this to guess.
+		// Only the called-function granularity carries a trace worth rendering.
+		// Every one is kept: an advisory can be reached a dozen ways, and which
+		// of them a reader recognizes is not for this to guess.
 		if len(f.Trace) > 1 {
 			v.traces = append(v.traces, f.Trace)
 		}
 		if vulnerable.Module == "" || f.FixedVersion == "" {
 			continue
 		}
-		// A module can have several vulns with different fixes; keep the highest.
+		// A module can have several vulns with different fixes; keep the
+		// highest.
 		if vulnerable.Module == stdlib {
 			if semver.Compare(f.FixedVersion, fix.goVersion) > 0 {
 				fix.goVersion = f.FixedVersion
@@ -167,9 +164,9 @@ func parse(r io.Reader) (fixes, map[string]vuln, error) {
 	}
 }
 
-// merge folds each advisory's own prose and link into what was reported about it.
-// The two arrive in either order, which is why they are collected apart and only
-// brought together once the stream ends.
+// merge folds each advisory's own prose and link into what was reported about
+// it. The two arrive in either order, which is why they are collected apart and
+// only brought together once the stream ends.
 func merge(reported map[string]*vuln, advisories map[string]*osv) map[string]vuln {
 	out := make(map[string]vuln, len(reported))
 	for id, v := range reported {
