@@ -22,9 +22,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// failureList is what report writes above the modules it gave up on.
-const failureList = "Modules that could not be remediated:\n\n"
-
 // vulnerable is the frame an advisory is against, caller the frame in the scanned
 // module that reaches it, and invoke a frame between the two.
 var (
@@ -53,17 +50,17 @@ var (
 
 func TestReport(t *testing.T) {
 	for _, tt := range []struct {
-		name    string
-		modules []moduleReport
-		want    string
+		name  string
+		vulns []vuln
+		want  string
 	}{
 		{
-			name:    "nothing to say is written as nothing",
-			modules: []moduleReport{{dir: "."}, {dir: "sub"}},
+			name:  "nothing to say is written as nothing",
+			vulns: nil,
 		},
 		{
-			name:    "an advisory the module's own code reaches",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{xtext}}},
+			name:  "an advisory the module's own code reaches",
+			vulns: []vuln{xtext},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
 				"**[GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Panic in golang.org/x/text/language\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
@@ -78,11 +75,11 @@ func TestReport(t *testing.T) {
 			// The standard library is named as govulncheck names it, by the package
 			// rather than the stdlib module path, and at a toolchain version.
 			name: "a standard-library advisory the module only carries",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{{
+			vulns: []vuln{{
 				osv: "GO-2024-2687", url: "https://pkg.go.dev/vuln/GO-2024-2687",
 				summary: "Improper header parsing in net/http",
 				module:  stdlib, pkg: "net/http", found: "v1.21.0", fixedIn: "v1.21.9",
-			}}}},
+			}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
 				"**[GO-2024-2687](https://pkg.go.dev/vuln/GO-2024-2687)**: Improper header parsing in net/http\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
@@ -96,10 +93,10 @@ func TestReport(t *testing.T) {
 		},
 		{
 			name: "an advisory with no published fix, and one the fix did not take",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{
+			vulns: []vuln{
 				{osv: "GO-1", module: "example.com/a", found: "v1.0.0", stillReported: true},
 				{osv: "GO-2", module: "example.com/b", found: "v1.0.0", fixedIn: "v1.1.0", stillReported: true},
-			}}},
+			},
 			want: "govulncheck found 2 vulnerabilities; this PR fixes 0, 1 does not have a fix ready yet, 1 unable to fix:\n\n" +
 				"**GO-1**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
@@ -125,10 +122,10 @@ func TestReport(t *testing.T) {
 			// Minimal version selection can land above the version that fixes the
 			// advisory, so the version the run left is named where it differs.
 			name: "a version selected above the one that fixes it",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{{
+			vulns: []vuln{{
 				osv: "GO-5", module: "golang.org/x/crypto", found: "v0.48.0",
 				selected: "v0.53.0", fixedIn: "v0.52.0",
-			}}}},
+			}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
 				"**GO-5**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
@@ -143,10 +140,10 @@ func TestReport(t *testing.T) {
 		},
 		{
 			name: "every way an advisory is reached is listed",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{{
+			vulns: []vuln{{
 				osv: "GO-6", module: "google.golang.org/grpc", found: "v1.81.1", fixedIn: "v1.82.1",
 				traces: [][]frame{{vulnerable, invoke, caller}, {vulnerable, caller}},
-			}}}},
+			}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
 				"**GO-6**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
@@ -163,10 +160,10 @@ func TestReport(t *testing.T) {
 			// site the sentence starts at, so the same advisory reads the same in
 			// both reports. These are given the other way round.
 			name: "traces come out ordered by the symbol reached",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{{
+			vulns: []vuln{{
 				osv: "GO-9", module: "golang.org/x/text", found: "v0.3.5", fixedIn: "v0.3.7",
 				traces: [][]frame{{vulnerable, caller}, {compose, caller}},
-			}}}},
+			}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
 				"**GO-9**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
@@ -183,13 +180,13 @@ func TestReport(t *testing.T) {
 			// differ only in frames no sentence names. A list of identical lines tells
 			// a reader nothing.
 			name: "traces that read the same are written once",
-			modules: []moduleReport{{dir: ".", vulns: []vuln{{
+			vulns: []vuln{{
 				osv: "GO-8", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0",
 				traces: [][]frame{
 					{vulnerable, {Package: "example.com/one", Function: "first"}, invoke, caller},
 					{vulnerable, {Package: "example.com/two", Function: "second"}, invoke, caller},
 				},
-			}}}},
+			}},
 			want: "govulncheck found 1 vulnerability; this PR fixes 1:\n\n" +
 				"**GO-8**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
@@ -203,12 +200,8 @@ func TestReport(t *testing.T) {
 		{
 			// Each module's outcome is reported on its own, so two modules
 			// reporting the same advisory produce an entry each.
-			name: "an entry per module reporting it, and the modules that failed after",
-			modules: []moduleReport{
-				{dir: ".", vulns: []vuln{{osv: "GO-7", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}}},
-				{dir: "broken", err: "govulncheck: exit status 1"},
-				{dir: "sub", vulns: []vuln{{osv: "GO-7", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}}},
-			},
+			name:  "an entry per module reporting it",
+			vulns: []vuln{{osv: "GO-7", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}, {osv: "GO-7", module: "example.com/a", found: "v1.0.0", fixedIn: "v1.1.0"}},
 			want: "govulncheck found 2 vulnerabilities; this PR fixes 2:\n\n" +
 				"**GO-7**\n\n" +
 				"<details>\n<summary>Details</summary>\n\n```\n" +
@@ -228,26 +221,13 @@ func TestReport(t *testing.T) {
 				"    Example traces found: none. There is no path from your code to this\n" +
 				"      vulnerability. It was remediated because it is in your dependency tree,\n" +
 				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
-				"```\n\n</details>\n" +
-				"\n" + failureList + "- `broken`: govulncheck: exit status 1\n",
-		},
-		{
-			name:    "a failure alone is still worth reporting",
-			modules: []moduleReport{{dir: ".", err: "still changing after 5 passes"}},
-			want:    failureList + "- `.`: still changing after 5 passes\n",
-		},
-		{
-			// modfile.Parse reports a malformed go.mod as newline-joined errors,
-			// which would otherwise break the list open.
-			name:    "an error spanning lines stays on its bullet",
-			modules: []moduleReport{{dir: ".", err: "go.mod:3: unknown directive\ngo.mod:7: bad version"}},
-			want:    failureList + "- `.`: go.mod:3: unknown directive go.mod:7: bad version\n",
+				"```\n\n</details>\n",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var out strings.Builder
-			if err := report(&out, tt.modules); err != nil {
-				t.Fatalf("report(%+v) failed: %v", tt.modules, err)
+			if err := report(&out, tt.vulns); err != nil {
+				t.Fatalf("report(%+v) failed: %v", tt.vulns, err)
 			}
 			if diff := cmp.Diff(out.String(), tt.want); diff != "" {
 				t.Errorf("report() differs (-got +want):\n%s", diff)
@@ -256,7 +236,7 @@ func TestReport(t *testing.T) {
 	}
 }
 
-// TestOneLine covers what would break a bullet out of its line.
+// TestOneLine covers what would break an entry out of its line.
 func TestOneLine(t *testing.T) {
 	for _, tt := range []struct{ in, want string }{
 		{"plain", "plain"},

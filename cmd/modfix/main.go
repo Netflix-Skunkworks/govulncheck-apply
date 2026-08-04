@@ -1,21 +1,21 @@
 // Copyright 2026 Netflix, Inc.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//  http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
 
 // Command modfix runs govulncheck over the modules under the working directory
-// and applies the fixes it reports. Each module is rescanned until a pass leaves
-// its go.mod and go.sum alone, because the version a fix selects can itself be
-// vulnerable.
+// and applies the fixes it reports. Each module is rescanned until a pass
+// leaves its go.mod and go.sum alone, because the version a fix selects can
+// itself be vulnerable.
 //
 //	go install github.com/netflix-skunkworks/govulncheck-apply/cmd/modfix@latest
 //	modfix
@@ -87,19 +87,23 @@ func remediate() error {
 
 	// Search for an apply fixes. Record fixes as we go, so that we can report
 	// them to the user.
-	var modules []moduleReport
+	var all []vuln
 	for _, dir := range dirs {
-		modules = append(modules, remediateModule(dir, govulncheck, *dbURL))
+		vulns, err := remediateModule(dir, govulncheck, *dbURL)
+		if err != nil {
+			return fmt.Errorf("%s: %w", filepath.ToSlash(dir), err)
+		}
+		all = append(all, vulns...)
 	}
 
 	// If there is a `go.work`, then run `go work use` to bump its `go`
 	// directive to whatever the `go.mod`s use after apply the remediations.
 	//
-	// Its failure is returned only after the report is written: the fixes are on
-	// disk either way, and whatever reports the run has to know what landed.
+	// Its failure is returned only after the report is written: the fixes are
+	// on disk either way, and whatever reports the run has to know what landed.
 	workUse := goWorkUse()
 
-	if err := report(os.Stdout, modules); err != nil {
+	if err := report(os.Stdout, all); err != nil {
 		return err
 	}
 	return workUse
@@ -109,20 +113,22 @@ func remediate() error {
 // fixes it identifies. It does so iteratively until a pass leaves go.mod and
 // go.sum alone.
 //
-// A module still changing after maxPasses is reported as an error.
-func remediateModule(dir, govulncheck, db string) moduleReport {
-	result := moduleReport{dir: filepath.ToSlash(dir)}
-	// A fix can introduce a vulnerability of its own, so the report covers every
-	// advisory any pass reported, described as the pass that first saw it did.
+// A module it cannot scan, or that is still changing after maxPasses, is
+// returned as an error: the run ends there, so no report claims a repository
+// was remediated when part of it was never read.
+func remediateModule(dir, govulncheck, db string) ([]vuln, error) {
+	// A fix can introduce a vulnerability of its own, so the report covers
+	// every advisory any pass reported, described as the pass that first saw it
+	// did.
 	seen := map[string]vuln{}
 	before, err := modFiles(dir)
 	if err != nil {
-		return result.withError(err)
+		return nil, err
 	}
 	for range maxPasses {
 		fix, reported, err := scan(dir, govulncheck, db)
 		if err != nil {
-			return result.withError(err)
+			return nil, err
 		}
 		for osv, v := range reported {
 			if _, ok := seen[osv]; !ok {
@@ -130,29 +136,28 @@ func remediateModule(dir, govulncheck, db string) moduleReport {
 			}
 		}
 		if err := apply(dir, fix); err != nil {
-			return result.withError(err)
+			return nil, err
 		}
 		after, err := modFiles(dir)
 		if err != nil {
-			return result.withError(err)
+			return nil, err
 		}
 		if bytes.Equal(before, after) {
 			selected, err := selectedVersions(dir)
 			if err != nil {
-				return result.withError(err)
+				return nil, err
 			}
-			result.vulns = classify(seen, reported, selected)
-			return result
+			return classify(seen, reported, selected), nil
 		}
 		before = after
 	}
-	return result.withError(fmt.Errorf("still changing after %d passes", maxPasses))
+	return nil, fmt.Errorf("still changing after %d passes", maxPasses)
 }
 
 // classify returns every advisory a module's passes reported, in id order, each
-// marked with whether the last pass reported it again and with the version of the
-// vulnerable module the run settled on. That, with the version that fixes it, is
-// everything the report needs to say what became of it.
+// marked with whether the last pass reported it again and with the version of
+// the vulnerable module the run settled on. That, with the version that fixes
+// it, is everything the report needs to say what became of it.
 func classify(seen, remaining map[string]vuln, selected map[string]string) []vuln {
 	var out []vuln
 	for _, osv := range slices.Sorted(maps.Keys(seen)) {
@@ -182,8 +187,8 @@ func selectedVersions(dir string) (map[string]string, error) {
 	return selected, nil
 }
 
-// modFiles returns the files a pass can change that the next scan reads, so that
-// a pass which changes none of them ends the rescanning.
+// modFiles returns the files a pass can change that the next scan reads, so
+// that a pass which changes none of them ends the rescanning.
 func modFiles(dir string) ([]byte, error) {
 	var out []byte
 	for _, name := range []string{"go.mod", "go.sum"} {
@@ -197,9 +202,9 @@ func modFiles(dir string) ([]byte, error) {
 }
 
 // goWorkUse raises go.work's own go directive to match the modules it uses.
-// Scanning with GOWORK=off keeps a raised go directive out of go.work, which can
-// leave go.work below the modules it uses, and every workspace-mode command then
-// fails with "requires go >= ...".
+// Scanning with GOWORK=off keeps a raised go directive out of go.work, which
+// can leave go.work below the modules it uses, and every workspace-mode command
+// then fails with "requires go >= ...".
 func goWorkUse() error {
 	if _, err := os.Stat("go.work"); errors.Is(err, fs.ErrNotExist) {
 		return nil

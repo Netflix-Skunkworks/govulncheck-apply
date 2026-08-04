@@ -1,23 +1,22 @@
 // Copyright 2026 Netflix, Inc.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//  http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
 
 package main
 
 import (
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"slices"
 	"strconv"
@@ -25,13 +24,9 @@ import (
 	"unicode"
 )
 
-// stdlib is the module path govulncheck reports a standard-library vulnerability
-// against. Its versions are Go versions.
 const stdlib = "stdlib"
 
-// vuln is what the scans of one module said about one advisory: the advisory
-// itself, the version of the vulnerable module found, the version that fixes it,
-// and every call that reaches it.
+// vuln is what the scans of one module said about one govulncheck advisory.
 type vuln struct {
 	osv           string
 	url           string
@@ -54,74 +49,21 @@ const (
 	fixNotTaken = "fix did not take"
 )
 
-// moduleReport is one module's outcome. A module that could not be scanned, or
-// that never settled, carries an error and no vulnerabilities: a run that stopped
-// partway cannot say what it fixed.
-type moduleReport struct {
-	dir   string
-	vulns []vuln
-	err   string
-}
-
-// withError records why a module was given up on. One module that cannot be
-// remediated must not stop the others, so this is reported rather than returned.
-func (m moduleReport) withError(err error) moduleReport {
-	fmt.Fprintf(os.Stderr, "giving up on %s: %v\n", m.dir, err)
-	m.err = err.Error()
-	return m
-}
-
-// report writes every module's outcome as markdown, for a pull request description
-// or a build log to carry as it is. Nothing is written when there is nothing to
-// say, so that a caller can test the output for emptiness.
-//
-// The layout is govulncheck's own, an entry per advisory rather than a row: a
-// summary and a call trace are each a sentence, and a table of sentences is wider
-// than a pull request shows without scrolling. Each entry is folded away behind its
-// own summary line, so that a repository with dozens reads as a list of one-liners.
-func report(w io.Writer, modules []moduleReport) error {
-	var entries, failures strings.Builder
-	var all []vuln
-	for _, m := range modules {
-		if m.err != "" {
-			fmt.Fprintf(&failures, "- `%s`: %s\n", oneLine(m.dir), oneLine(m.err))
-			continue
-		}
-		for _, v := range m.vulns {
-			all = append(all, v)
-			if len(all) > 1 {
-				entries.WriteString("\n")
-			}
-			entries.WriteString(entry(v))
-		}
-	}
-	if len(all) == 0 && failures.Len() == 0 {
+// report writes every advisory a run found as markdown.
+func report(w io.Writer, all []vuln) error {
+	if len(all) == 0 {
 		return nil
 	}
-
-	var out strings.Builder
-	if len(all) > 0 {
-		fmt.Fprintf(&out, "%s\n\n", heading(all))
-		out.WriteString(entries.String())
+	entries := make([]string, 0, len(all))
+	for _, v := range all {
+		entries = append(entries, entry(v))
 	}
-	if failures.Len() > 0 {
-		if out.Len() > 0 {
-			out.WriteString("\n")
-		}
-		out.WriteString("Modules that could not be remediated:\n\n")
-		out.WriteString(failures.String())
-	}
-	_, err := io.WriteString(w, out.String())
+	_, err := fmt.Fprintf(w, "%s\n\n%s", heading(all), strings.Join(entries, "\n"))
 	return err
 }
 
-// heading counts what the run found against what it left, so that a reader sees at
-// a glance whether anything is outstanding. An advisory the last pass no longer
-// reported is fixed, whether a version fixed it or go mod tidy dropped what carried
-// it. The two ways one can be left behind are counted apart, and named only when
-// they happened, so the numbers always account for the whole: a fix may not be
-// published yet, or one may be published and the upgrade not shake the vulnerable
-// version out of the build list, which a replace directive can cause.
+// heading counts what the run found against what it left, so that a reader sees
+// at a glance whether anything is outstanding.
 func heading(all []vuln) string {
 	fixed, unfixable, stuck := 0, 0, 0
 	for _, v := range all {
@@ -153,15 +95,7 @@ func agree(n int, one, many string) string {
 	return many
 }
 
-// entry renders one advisory. Which module of the repository reported it is not
-// named: almost every repository has one, and a call trace names a file, which
-// places the entry in a repository that has more than one.
-//
-// The advisory, its link and its prose are a line of their own rather than the
-// summary of the fold, so that the list reads without opening anything and the link
-// is a link rather than half of a control. What is folded away is what govulncheck
-// prints under the heading, laid out as govulncheck lays it out, in a code block so
-// that the indentation survives and no symbol is read as markdown.
+// entry renders one advisory.
 func entry(v vuln) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s**", advisory(v))
@@ -176,10 +110,10 @@ func entry(v vuln) string {
 	}
 	fmt.Fprintf(&b, "    Found in: %s\n", oneLine(at(v, v.found)))
 	fmt.Fprintf(&b, "    Fixed in: %s\n", fixedIn(v))
-	// The version that fixes an advisory is a minimum, so minimal version selection
-	// can land above it, and naming only the minimum next to a diff that says
-	// otherwise reads as a mistake. govulncheck has no line for this, so it gets one
-	// in the same shape as the two above.
+	// The version that fixes an advisory is a minimum, so minimal version
+	// selection can land above it, and naming only the minimum next to a diff
+	// that says otherwise reads as a mistake. govulncheck has no line for this,
+	// so it gets one in the same shape as the two above.
 	if v.selected != "" && v.selected != v.found && v.selected != v.fixedIn {
 		fmt.Fprintf(&b, "    Selected: %s\n", oneLine(at(v, v.selected)))
 	}
@@ -188,9 +122,6 @@ func entry(v vuln) string {
 	return b.String()
 }
 
-// fixedIn says what became of the advisory: the version that fixes it, that no
-// version does, or that one does and the upgrade did not shake the vulnerable
-// version out of the build list anyway.
 func fixedIn(v vuln) string {
 	if v.fixedIn == "" {
 		return noFix
@@ -202,27 +133,18 @@ func fixedIn(v vuln) string {
 	return in
 }
 
-// at names what carries the vulnerability at one of its versions, as govulncheck
-// writes it.
 func at(v vuln, version string) string {
 	return vulnerableModule(v) + "@" + toolchainName(v.module, version)
 }
 
-// noTraces is written where govulncheck found no path from the module's own code.
-// The advisory was remediated anyway, so a reader who has just seen the diff is owed
-// the reason. Hard-wrapped because a code block scrolls sideways rather than
-// wrapping, which is what put the report in this shape to begin with.
 const noTraces = `    Example traces found: none. There is no path from your code to this
       vulnerability. It was remediated because it is in your dependency tree,
       where a scanner that does not tree-shake would alert on it regardless.
 `
 
 // traces renders the calls that reach the vulnerable symbol, numbered as
-// govulncheck numbers them, or [noTraces] for an advisory the module only carries.
-//
-// Two findings reaching the same symbol by paths that differ only in frames no
-// sentence names render as the same sentence, and a list of identical lines tells a
-// reader nothing, so each is written once.
+// govulncheck numbers them, or [noTraces] for an advisory the module only
+// carries.
 func traces(traces [][]frame) string {
 	type call struct{ reaches, sentence string }
 	var reached []call
@@ -238,9 +160,9 @@ func traces(traces [][]frame) string {
 	if len(reached) == 0 {
 		return noTraces
 	}
-	// Ordered by the symbol reached rather than by the sentence, which starts at the
-	// call site: govulncheck orders its own this way, and the same advisory should
-	// read the same in both reports.
+	// Ordered by the symbol reached rather than by the sentence, which starts
+	// at the call site: govulncheck orders its own this way, and the same
+	// advisory should read the same in both reports.
 	slices.SortFunc(reached, func(a, b call) int {
 		if c := strings.Compare(a.reaches, b.reaches); c != 0 {
 			return c
@@ -255,9 +177,10 @@ func traces(traces [][]frame) string {
 	return b.String()
 }
 
-// vulnerableModule names what carries the vulnerability. For the standard library
-// that is a package, as govulncheck's own report has it: crypto/tls tells a reader
-// what to look at, where stdlib only tells them which version moved.
+// vulnerableModule names what carries the vulnerability. For the standard
+// library that is a package, as govulncheck's own report has it: crypto/tls
+// tells a reader what to look at, where stdlib only tells them which version
+// moved.
 func vulnerableModule(v vuln) string {
 	if v.module == stdlib && v.pkg != "" {
 		return v.pkg
@@ -265,9 +188,9 @@ func vulnerableModule(v vuln) string {
 	return v.module
 }
 
-// toolchainName renders the version of the vulnerable module. govulncheck reports
-// the standard library's as a semver, where a toolchain name is what a reader of a
-// go directive recognizes.
+// toolchainName renders the version of the vulnerable module. govulncheck
+// reports the standard library's as a semver, where a toolchain name is what a
+// reader of a go directive recognizes.
 func toolchainName(module, v string) string {
 	if module != stdlib || v == "" {
 		return v
@@ -276,7 +199,8 @@ func toolchainName(module, v string) string {
 }
 
 // advisory links the OSV id to the entry the database gave a URL for, so that a
-// reader can reach the advisory itself without a line of its own for the address.
+// reader can reach the advisory itself without a line of its own for the
+// address.
 func advisory(v vuln) string {
 	if v.url == "" {
 		return oneLine(v.osv)
@@ -284,22 +208,23 @@ func advisory(v vuln) string {
 	return "[" + oneLine(v.osv) + "](" + oneLine(v.url) + ")"
 }
 
-// oneLine folds text onto a single line, so that it cannot break out of the bullet
-// or heading it is written into. An advisory's summary and a go command's error are
-// the two that arrive spanning lines.
+// oneLine folds text onto a single line, so that it cannot break out of the
+// entry's first line or the code block under it. An advisory's summary is what
+// arrives spanning lines.
 func oneLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
 
 // callSite renders how a module's own code reaches a vulnerable symbol, in
-// govulncheck's own words. The last frame of the trace is the call in that code,
-// trace[0] is the symbol it reaches, and the frame between them is what it calls
-// to get there. Only the called-function granularity carries the positions, so the
-// coarser findings render as nothing.
+// govulncheck's own words. The last frame of the trace is the call in that
+// code, trace[0] is the symbol it reaches, and the frame between them is what
+// it calls to get there. Only the called-function granularity carries the
+// positions, so the coarser findings render as nothing.
 //
-// What the caller reaches for is named rather than left out, because naming only
-// the two ends reads as a call that is not there: it is grpc.ClientConn.Invoke that
-// reaches the vulnerable symbol, not the protobuf method that called it.
+// What the caller reaches for is named rather than left out, because naming
+// only the two ends reads as a call that is not there: it is
+// grpc.ClientConn.Invoke that reaches the vulnerable symbol, not the protobuf
+// method that called it.
 func callSite(trace []frame) string {
 	if len(trace) < 2 {
 		return ""
@@ -315,9 +240,9 @@ func callSite(trace []frame) string {
 		caller.Position, symbol(caller), symbol(trace[len(trace)-2]), symbol(trace[0]))
 }
 
-// symbol names a frame's function the way govulncheck's own report does, so that
-// a reader of both sees the same names. A pointer receiver is written without the
-// star, as a call on it reads.
+// symbol names a frame's function the way govulncheck's own report does, so
+// that a reader of both sees the same names. A pointer receiver is written
+// without the star, as a call on it reads.
 func symbol(f frame) string {
 	// A closure arrives as the function it is declared in, suffixed.
 	name, _, _ := strings.Cut(f.Function, "$")
@@ -333,8 +258,8 @@ func symbol(f frame) string {
 // packageName is the name a package is imported under, which is not always the
 // last element of its import path: a major version suffix names the directory
 // above it, and the rest of a name that is not an identifier is dropped, so
-// github.com/dgrijalva/jwt-go reads as jwt. This is goimports' heuristic, by way
-// of govulncheck, which keeps its copy in an internal package.
+// github.com/dgrijalva/jwt-go reads as jwt. This is goimports' heuristic, by
+// way of govulncheck, which keeps its copy in an internal package.
 func packageName(importPath string) string {
 	base := path.Base(importPath)
 	if major, err := strconv.Atoi(strings.TrimPrefix(base, "v")); err == nil && major > 0 {

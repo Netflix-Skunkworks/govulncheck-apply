@@ -1,0 +1,43 @@
+# A module that cannot be scanned ends the run, and nothing else is touched.
+#
+# The root example.com/root does not type-check, so govulncheck cannot load its
+# packages. Modules are visited outermost first, so the root is reached before sub/,
+# whose golang.org/x/text v0.3.6 carries GO-2021-0113 and would otherwise be raised
+# to v0.3.7.
+#
+# sub/ is left alone, which is what the empty want_diff.txt asserts: the run stops at
+# the module it gave up on rather than remediating what it can. Nothing reaches stdout
+# either, because the report is never written — the module and its error name it on
+# stderr, and the non-zero exit is what stops the caller committing and has NDR mail
+# the repository's owners.
+
+exit: 1
+-- broken.go --
+package root
+
+// Broken does not type-check, so govulncheck cannot load this module's packages
+// and exits non-zero.
+func Broken() int { return "not an int" }
+-- go.mod --
+module example.com/root
+
+go 1.21.0
+-- sub/go.mod --
+module example.com/sub
+
+go 1.25.0
+
+require golang.org/x/text v0.3.6
+-- sub/go.sum --
+golang.org/x/text v0.3.6 h1:aRYxNxv6iGQlyVaZmk6ZgYEDa+Jg18DxebPSrd6bg1M=
+golang.org/x/text v0.3.6/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+-- sub/sub.go --
+package sub
+
+import "golang.org/x/text/language"
+
+// Parse is the vulnerable call path for GO-2021-0113.
+func Parse(s string) (language.Tag, error) { return language.Parse(s) }
+-- want_diff.txt --
+-- want_report.md --

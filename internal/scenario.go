@@ -16,12 +16,14 @@ package internal
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -44,6 +46,10 @@ const (
 // database rather than the live vuln.go.dev, passed as -db, so findings are
 // deterministic and offline. A command that does not scan has no such sibling and
 // is given no flags.
+//
+// The command is expected to exit 0 unless the case carries an `exit` directive.
+// A case that requires a non-zero exit still asserts its diff: a run can fail and
+// have changed files, and what the two together mean is the point of such a case.
 func Scenarios(t *testing.T) {
 	cases, err := filepath.Glob("testcases/*.txtar")
 	if err != nil {
@@ -111,7 +117,10 @@ func Scenarios(t *testing.T) {
 			if db := loadDB(t, path); db != "" {
 				args = append(args, "-db", "file://"+db)
 			}
-			gotReport := runEnv(t, repo, []string{"GOTOOLCHAIN=" + Toolchain(d)}, command, args...)
+			gotReport, gotStderr, gotExit := runCommand(t, repo, []string{"GOTOOLCHAIN=" + Toolchain(d)}, command, args...)
+			if got, want := strconv.Itoa(gotExit), cmp.Or(d["exit"], "0"); got != want {
+				t.Errorf("%s exited %s, want %s\n%s", filepath.Base(command), got, want, gotStderr)
+			}
 
 			run(t, repo, "git", "add", "-A")
 			gotDiff := run(t, repo, "git", "-c", "core.pager=cat", "diff", "--cached")
@@ -178,23 +187,30 @@ func gitInit(t *testing.T, dir string) {
 	run(t, dir, "git", "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "fixture")
 }
 
-// run executes a command in dir, failing the test on error, and returns stdout.
-func run(t *testing.T, dir, name string, args ...string) string {
-	t.Helper()
-	return runEnv(t, dir, nil, name, args...)
-}
-
-// runEnv is run with extra environment variables.
-func runEnv(t *testing.T, dir string, env []string, name string, args ...string) string {
+// runCommand runs a command in dir with extra environment variables, returning its
+// stdout, its stderr and its exit code. A non-zero exit is the caller's to judge
+// rather than a failure here, because a scenario can require one.
+func runCommand(t *testing.T, dir string, env []string, name string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil && !errors.As(err, new(*exec.ExitError)) {
+		// The command never ran at all, which no scenario asks for.
 		t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, stderr.String())
 	}
-	return stdout.String()
+	return stdout.String(), stderr.String(), cmd.ProcessState.ExitCode()
+}
+
+// run executes a command in dir, failing the test on a non-zero exit, and returns
+// stdout.
+func run(t *testing.T, dir, name string, args ...string) string {
+	t.Helper()
+	stdout, stderr, exit := runCommand(t, dir, nil, name, args...)
+	if exit != 0 {
+		t.Fatalf("%s %s: exit %d\n%s", name, strings.Join(args, " "), exit, stderr)
+	}
+	return stdout
 }
