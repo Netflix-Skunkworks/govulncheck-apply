@@ -136,19 +136,64 @@ func goEnv() []string {
 	return append(os.Environ(), "GOWORK=off")
 }
 
-// commandLine returns cmd's command line, with the directory dropped from the
-// program it names, so that the govulncheck installed into a temporary
-// directory reads as the command it is.
+// commandLine names cmd, dropping the program's directory so that the
+// govulncheck installed into a temporary directory reads as the command it is.
 func commandLine(cmd *exec.Cmd) string {
 	args := slices.Clone(cmd.Args)
 	args[0] = filepath.Base(args[0])
 	return strings.Join(args, " ")
 }
 
-// announce says what is about to be run, on stderr because stdout carries the
-// report.
+// announce prints the command about to run, as a line that runs it again. It
+// goes to stderr because stdout carries the report.
 func announce(cmd *exec.Cmd) {
-	fmt.Fprintf(os.Stderr, "Running %q\n", commandLine(cmd))
+	var line []string
+	if cmd.Dir != "" && cmd.Dir != "." {
+		line = append(line, "cd", shellWord(filepath.ToSlash(cmd.Dir)), "&&")
+	}
+	line = append(line, environment(cmd)...)
+	args := slices.Clone(cmd.Args)
+	args[0] = filepath.Base(args[0])
+	for _, arg := range args {
+		line = append(line, shellWord(arg))
+	}
+	fmt.Fprintln(os.Stderr, "Running:", strings.Join(line, " "))
+}
+
+// environment returns the NAME=value assignments cmd carries that this
+// program's own environment does not. A name assigned twice takes its last
+// value, as exec does.
+func environment(cmd *exec.Cmd) []string {
+	if cmd.Env == nil {
+		return nil
+	}
+	ambient := map[string]string{}
+	for _, assignment := range os.Environ() {
+		name, value, _ := strings.Cut(assignment, "=")
+		ambient[name] = value
+	}
+	set := map[string]string{}
+	for _, assignment := range cmd.Env {
+		name, value, _ := strings.Cut(assignment, "=")
+		set[name] = value
+	}
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(set)) {
+		if was, ok := ambient[name]; !ok || was != set[name] {
+			out = append(out, name+"="+shellWord(set[name]))
+		}
+	}
+	return out
+}
+
+// shellWord quotes s so that a shell reads it as the single word it is here.
+func shellWord(s string) string {
+	const safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./-_"
+	unsafe := func(r rune) bool { return !strings.ContainsRune(safe, r) }
+	if s == "" || strings.ContainsFunc(s, unsafe) {
+		return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	}
+	return s
 }
 
 // run announces and executes cmd, surfacing its output on stderr.

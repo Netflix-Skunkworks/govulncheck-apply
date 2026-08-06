@@ -115,9 +115,8 @@ func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 		if !empty {
 			return fixes{}, nil, fmt.Errorf("%s: %v", commandLine(cmd), err)
 		}
-		// govulncheck's failure is already on stderr, so name the empty module
-		// that caused it. Its output is not read: the scan did not run, and
-		// there is nothing to find in what a failed one printed.
+		// Returning rather than falling through: the scan did not run, so its
+		// output holds nothing to find.
 		fmt.Fprintf(os.Stderr, "No package in %q to scan; nothing to fix.\n", filepath.ToSlash(dir))
 		return fixes{}, nil, nil
 	}
