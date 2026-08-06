@@ -33,7 +33,6 @@ import (
 	"io/fs"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 
@@ -98,17 +97,7 @@ func remediate() error {
 		all = append(all, vulns...)
 	}
 
-	// If there is a `go.work`, then run `go work use` to bump its `go`
-	// directive to whatever the `go.mod`s use after apply the remediations.
-	//
-	// Its failure is returned only after the report is written: the fixes are
-	// on disk either way, and whatever reports the run has to know what landed.
-	workUse := goWorkUse()
-
-	if err := report(os.Stdout, all); err != nil {
-		return err
-	}
-	return workUse
+	return report(os.Stdout, all)
 }
 
 // remediateModule scans the module in dir with govulncheck and applies the
@@ -201,17 +190,4 @@ func modFiles(dir string) ([]byte, error) {
 		out = append(out, data...)
 	}
 	return out, nil
-}
-
-// goWorkUse raises go.work's own go directive to match the modules it uses.
-// Scanning with GOWORK=off keeps a raised go directive out of go.work, which
-// can leave go.work below the modules it uses, and every workspace-mode command
-// then fails with "requires go >= ...".
-func goWorkUse() error {
-	if _, err := os.Stat("go.work"); errors.Is(err, fs.ErrNotExist) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	return run(exec.Command("go", "work", "use"))
 }

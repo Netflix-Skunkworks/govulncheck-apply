@@ -43,6 +43,9 @@ func apply(dir string, fix fixes) error {
 		if err := goModEditGo(dir, strings.TrimPrefix(fix.goVersion, "v")); err != nil {
 			return err
 		}
+		if err := goWorkUse(); err != nil {
+			return err
+		}
 	}
 	if len(fix.modules) > 0 {
 		if err := requireModules(dir, fix.modules); err != nil {
@@ -89,6 +92,16 @@ func goModEditGo(dir, version string) error {
 		args = append(args, "-toolchain=none")
 	}
 	return run(goCmd(dir, args...))
+}
+
+// goWorkUse raises go.work's own go directive to match the modules it uses.
+func goWorkUse() error {
+	if _, err := os.Stat("go.work"); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return run(exec.Command("go", "work", "use"))
 }
 
 // bumpReplacedModules raises the version of each replacement that points at the
