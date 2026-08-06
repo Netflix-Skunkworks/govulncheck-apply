@@ -98,12 +98,37 @@ func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 	cmd.Env = append(goEnv(), "GOFLAGS=-mod=mod")
 	cmd.Stderr = os.Stderr
 	// With -json, govulncheck exits 0 whether or not it found anything, so a
-	// failure here means it could not load the packages.
+	// failure here is either a module it could not load or one that held no
+	// package to load in the first place.
 	out, err := cmd.Output()
 	if err != nil {
-		return fixes{}, nil, fmt.Errorf("govulncheck: %v", err)
+		// It's possible that we just scanned a dir tree with no Go packages. If
+		// so, govulncheck will err: but we don't care about those errors. So we
+		// ignore those. (Unfortunately govulncheck doesn't expose that error so
+		// we have to infer it ourselves)
+		empty, listErr := noPackages(dir)
+		if listErr != nil {
+			return fixes{}, nil, listErr
+		}
+		if !empty {
+			return fixes{}, nil, fmt.Errorf("govulncheck: %v", err)
+		}
 	}
 	return parse(bytes.NewReader(out))
+}
+
+func noPackages(dir string) (bool, error) {
+	cmd := goCmd(dir, "list", "./...")
+	// The same -mod as the scan: without it the go command stops to complain
+	// that go.mod needs updating, for the workspace modules whose requirements
+	// only go.work.sum was supplying.
+	cmd.Env = append(cmd.Env, "GOFLAGS=-mod=mod")
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out.String()) == "", nil
 }
 
 // parse reads a `govulncheck -json` stream.

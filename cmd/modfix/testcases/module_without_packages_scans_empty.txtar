@@ -1,0 +1,37 @@
+# A module holding no package the build constraints admit. tools/ exists only to
+# pin a code generator in go.mod, so its one file sits behind //go:build generate
+# and ./... matches nothing. This is the shape of the tools module that the
+# terraform-provider scaffold gives every provider repository.
+#
+# govulncheck calls that a usage error and exits 2, which is not something the
+# module's owner can act on: there is no package to scan and nothing to fix. So
+# the run has to treat it as an empty scan and carry on to the root module,
+# rather than stopping the way it does for a module it genuinely cannot load.
+#
+# The empty want_diff.txt asserts the run changes nothing — neither module has a
+# vulnerability here, so this case is about the run surviving tools/ at all. An
+# exit of 1 would mean the run stopped, and no vulnerability at all is
+# distinguishable from a report that was never written.
+-- go.mod --
+module example.com/root
+
+go 1.25.0
+-- root.go --
+package root
+
+// Fine type-checks, so the root module scans normally once tools/ has been
+// passed over.
+func Fine() int { return 1 }
+-- tools/go.mod --
+module example.com/root/tools
+
+go 1.25.0
+-- tools/tools.go --
+//go:build generate
+
+// Package tools pins the code generators this repository runs, so that go.mod
+// records their versions. Nothing imports it and the tag keeps it out of every
+// build, which leaves the module with no package to scan.
+package tools
+-- want_diff.txt --
+-- want_report.md --
