@@ -73,8 +73,9 @@ func localGoVersion() (string, error) {
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, os.Stderr
+	announce(cmd)
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("go env GOVERSION: %v", err)
+		return "", fmt.Errorf("%s: %v", commandLine(cmd), err)
 	}
 	return strings.TrimPrefix(strings.TrimSpace(out.String()), "go"), nil
 }
@@ -97,6 +98,7 @@ func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 	// it.
 	cmd.Env = append(goEnv(), "GOFLAGS=-mod=mod")
 	cmd.Stderr = os.Stderr
+	announce(cmd)
 	// With -json, govulncheck exits 0 whether or not it found anything, so a
 	// failure here is either a module it could not load or one that held no
 	// package to load in the first place.
@@ -111,8 +113,13 @@ func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 			return fixes{}, nil, listErr
 		}
 		if !empty {
-			return fixes{}, nil, fmt.Errorf("govulncheck: %v", err)
+			return fixes{}, nil, fmt.Errorf("%s: %v", commandLine(cmd), err)
 		}
+		// govulncheck's failure is already on stderr, so name the empty module
+		// that caused it. Its output is not read: the scan did not run, and
+		// there is nothing to find in what a failed one printed.
+		fmt.Fprintf(os.Stderr, "No package in %q to scan; nothing to fix.\n", filepath.ToSlash(dir))
+		return fixes{}, nil, nil
 	}
 	return parse(bytes.NewReader(out))
 }
@@ -125,8 +132,9 @@ func noPackages(dir string) (bool, error) {
 	cmd.Env = append(cmd.Env, "GOFLAGS=-mod=mod")
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, os.Stderr
+	announce(cmd)
 	if err := cmd.Run(); err != nil {
-		return false, err
+		return false, fmt.Errorf("%s: %v", commandLine(cmd), err)
 	}
 	return strings.TrimSpace(out.String()) == "", nil
 }

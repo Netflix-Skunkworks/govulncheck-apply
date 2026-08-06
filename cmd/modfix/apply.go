@@ -123,11 +123,27 @@ func goEnv() []string {
 	return append(os.Environ(), "GOWORK=off")
 }
 
-// run executes cmd, surfacing its output on stderr.
+// commandLine returns cmd's command line, with the directory dropped from the
+// program it names, so that the govulncheck installed into a temporary
+// directory reads as the command it is.
+func commandLine(cmd *exec.Cmd) string {
+	args := slices.Clone(cmd.Args)
+	args[0] = filepath.Base(args[0])
+	return strings.Join(args, " ")
+}
+
+// announce says what is about to be run, on stderr because stdout carries the
+// report.
+func announce(cmd *exec.Cmd) {
+	fmt.Fprintf(os.Stderr, "Running %q\n", commandLine(cmd))
+}
+
+// run announces and executes cmd, surfacing its output on stderr.
 func run(cmd *exec.Cmd) error {
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+	announce(cmd)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %v", strings.Join(cmd.Args, " "), err)
+		return fmt.Errorf("%s: %v", commandLine(cmd), err)
 	}
 	return nil
 }

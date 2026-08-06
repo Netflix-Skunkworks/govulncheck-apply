@@ -88,7 +88,9 @@ func remediate() error {
 	// Search for an apply fixes. Record fixes as we go, so that we can report
 	// them to the user.
 	var all []vuln
-	for _, dir := range dirs {
+
+	for i, dir := range dirs {
+		fmt.Fprintf(os.Stderr, "Working on module %q (%d of %d)\n", filepath.ToSlash(dir), i+1, len(dirs))
 		vulns, err := remediateModule(dir, govulncheck, *dbURL)
 		if err != nil {
 			return fmt.Errorf("%s: %w", filepath.ToSlash(dir), err)
