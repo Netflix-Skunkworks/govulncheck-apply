@@ -86,9 +86,9 @@ func TestReport(t *testing.T) {
 				"  Standard library\n" +
 				"    Found in: net/http@go1.21.0\n" +
 				"    Fixed in: net/http@go1.21.9\n" +
-				"    Example traces found: none. There is no path from your code to this\n" +
-				"      vulnerability. It was remediated because it is in your dependency tree,\n" +
-				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
+				"    Example traces found: none. The scan reports which packages hold the\n" +
+				"      vulnerability rather than which calls reach it, so whether your code\n" +
+				"      reaches this one is not known here. It was remediated either way.\n" +
 				"```\n\n</details>\n",
 		},
 		{
@@ -103,9 +103,9 @@ func TestReport(t *testing.T) {
 				"  Module: example.com/a\n" +
 				"    Found in: example.com/a@v1.0.0\n" +
 				"    Fixed in: no fix published\n" +
-				"    Example traces found: none. There is no path from your code to this\n" +
-				"      vulnerability. It was remediated because it is in your dependency tree,\n" +
-				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
+				"    Example traces found: none. The scan reports which packages hold the\n" +
+				"      vulnerability rather than which calls reach it, so whether your code\n" +
+				"      reaches this one is not known here. It was remediated either way.\n" +
 				"```\n\n</details>\n" +
 				"\n" +
 				"**GO-2**\n\n" +
@@ -113,9 +113,9 @@ func TestReport(t *testing.T) {
 				"  Module: example.com/b\n" +
 				"    Found in: example.com/b@v1.0.0\n" +
 				"    Fixed in: example.com/b@v1.1.0 (fix did not take)\n" +
-				"    Example traces found: none. There is no path from your code to this\n" +
-				"      vulnerability. It was remediated because it is in your dependency tree,\n" +
-				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
+				"    Example traces found: none. The scan reports which packages hold the\n" +
+				"      vulnerability rather than which calls reach it, so whether your code\n" +
+				"      reaches this one is not known here. It was remediated either way.\n" +
 				"```\n\n</details>\n",
 		},
 		{
@@ -133,9 +133,9 @@ func TestReport(t *testing.T) {
 				"    Found in: golang.org/x/crypto@v0.48.0\n" +
 				"    Fixed in: golang.org/x/crypto@v0.52.0\n" +
 				"    Selected: golang.org/x/crypto@v0.53.0\n" +
-				"    Example traces found: none. There is no path from your code to this\n" +
-				"      vulnerability. It was remediated because it is in your dependency tree,\n" +
-				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
+				"    Example traces found: none. The scan reports which packages hold the\n" +
+				"      vulnerability rather than which calls reach it, so whether your code\n" +
+				"      reaches this one is not known here. It was remediated either way.\n" +
 				"```\n\n</details>\n",
 		},
 		{
@@ -208,9 +208,9 @@ func TestReport(t *testing.T) {
 				"  Module: example.com/a\n" +
 				"    Found in: example.com/a@v1.0.0\n" +
 				"    Fixed in: example.com/a@v1.1.0\n" +
-				"    Example traces found: none. There is no path from your code to this\n" +
-				"      vulnerability. It was remediated because it is in your dependency tree,\n" +
-				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
+				"    Example traces found: none. The scan reports which packages hold the\n" +
+				"      vulnerability rather than which calls reach it, so whether your code\n" +
+				"      reaches this one is not known here. It was remediated either way.\n" +
 				"```\n\n</details>\n" +
 				"\n" +
 				"**GO-7**\n\n" +
@@ -218,9 +218,9 @@ func TestReport(t *testing.T) {
 				"  Module: example.com/a\n" +
 				"    Found in: example.com/a@v1.0.0\n" +
 				"    Fixed in: example.com/a@v1.1.0\n" +
-				"    Example traces found: none. There is no path from your code to this\n" +
-				"      vulnerability. It was remediated because it is in your dependency tree,\n" +
-				"      where a scanner that does not tree-shake would alert on it regardless.\n" +
+				"    Example traces found: none. The scan reports which packages hold the\n" +
+				"      vulnerability rather than which calls reach it, so whether your code\n" +
+				"      reaches this one is not known here. It was remediated either way.\n" +
 				"```\n\n</details>\n",
 		},
 	} {

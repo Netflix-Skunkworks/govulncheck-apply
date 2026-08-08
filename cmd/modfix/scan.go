@@ -84,8 +84,15 @@ func localGoVersion() (string, error) {
 // database at db, or govulncheck's own default if db is empty. It returns the
 // fixes reported, and what was reported about each advisory, keyed by OSV id.
 func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
+	// Scanning at package rather than symbol granularity, because a fix is worth
+	// applying whether or not the vulnerable function is called, and because the
+	// symbol granularity is the only one that type-checks the module. Type
+	// checking pulls in a C toolchain and every system header any cgo dependency
+	// expects, and fails the whole module when one is missing or when a
+	// dependency does not compile.
+	//
 	// Pass -test so that a vulnerability only a test reaches is still reported.
-	args := []string{"-test", "-json"}
+	args := []string{"-scan", "package", "-test", "-json"}
 	if db != "" {
 		args = append(args, "-db", db)
 	}
