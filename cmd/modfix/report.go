@@ -137,14 +137,13 @@ func at(v vuln, version string) string {
 	return vulnerableModule(v) + "@" + toolchainName(v.module, version)
 }
 
-const noTraces = `    Example traces found: none. There is no path from your code to this
-      vulnerability. It was remediated because it is in your dependency tree,
-      where a scanner that does not tree-shake would alert on it regardless.
+const noTraces = `    Example traces found: none. The scan reports which packages hold the
+      vulnerability rather than which calls reach it, so whether your code
+      reaches this one is not known here. It was remediated either way.
 `
 
 // traces renders the calls that reach the vulnerable symbol, numbered as
-// govulncheck numbers them, or [noTraces] for an advisory the module only
-// carries.
+// govulncheck numbers them, or [noTraces] where the scan named no call.
 func traces(traces [][]frame) string {
 	type call struct{ reaches, sentence string }
 	var reached []call

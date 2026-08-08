@@ -1,7 +1,11 @@
 # A module that cannot be scanned ends the run, and nothing else is touched.
 #
-# The root example.com/root does not type-check, so govulncheck cannot load its
-# packages. Modules are visited outermost first, so the root is reached before sub/,
+# The root example.com/root imports a module that cannot be resolved, so govulncheck
+# cannot load its packages. It has to be the imports that fail: the scan runs at
+# package granularity, which neither type-checks nor parses the code, so a module is
+# unscannable only when the go command cannot work out what it depends on.
+#
+# Modules are visited outermost first, so the root is reached before sub/,
 # whose golang.org/x/text v0.3.6 carries GO-2021-0113 and would otherwise be raised
 # to v0.3.7.
 #
@@ -15,9 +19,9 @@ exit: 1
 -- broken.go --
 package root
 
-// Broken does not type-check, so govulncheck cannot load this module's packages
-// and exits non-zero.
-func Broken() int { return "not an int" }
+// .invalid is reserved and resolves to nothing, so no module can provide this
+// import and the go command cannot list the package that asks for it.
+import _ "example.invalid/nope"
 -- go.mod --
 module example.com/root
 
