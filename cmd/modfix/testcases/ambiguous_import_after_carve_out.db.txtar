@@ -1,0 +1,20 @@
+# A minimal govulncheck DB reporting only GO-2026-6061
+# (google.golang.org/grpc/credentials, fixed in v1.82.1).
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"google.golang.org/grpc","vulns":[{"id":"GO-2026-6061","modified":"2026-07-22T00:00:00Z","fixed":"1.82.1"}]}]
+-- ID/GO-2026-6061.json --
+{
+  "id": "GO-2026-6061",
+  "summary": "Ambiguity after a module carve-out in google.golang.org/grpc",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2026-6061"},
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "google.golang.org/grpc", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "1.82.1"}]}],
+      "ecosystem_specific": {"imports": [{"path": "google.golang.org/grpc/credentials", "symbols": ["NewTLS"]}]}
+    }
+  ]
+}
