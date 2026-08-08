@@ -15,8 +15,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -24,6 +26,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"golang.org/x/mod/module"
+	"golang.org/x/mod/semver"
 
 	"github.com/netflix-skunkworks/govulncheck-apply/internal/gomod"
 )
@@ -55,14 +60,85 @@ func apply(dir string, fix fixes) error {
 			return err
 		}
 	}
-	if err := run(goCmd(dir, "mod", "tidy")); err != nil {
+	if err := tidy(dir); err != nil {
 		return err
 	}
 	return goModVendor(dir)
 }
 
-// requireModules raises the minimum required version of each module to the
-// version that fixes it.
+// tidy runs `go mod tidy`. Where the first run fails only because a module
+// carve-out left two modules offering one package, it raises the module the
+// package was carved out of and runs tidy again. Tidy drops that require
+// directive itself when the second run succeeds, and leaves it when it fails.
+func tidy(dir string) error {
+	cmd := goCmd(dir, "mod", "tidy")
+	var said bytes.Buffer
+	both := io.MultiWriter(os.Stderr, &said)
+	cmd.Stdout, cmd.Stderr = both, both
+	announce(cmd)
+	ran := cmd.Run()
+	if ran == nil {
+		return nil
+	}
+	err := fmt.Errorf("%s: %v", commandLine(cmd), ran)
+	carved := carvedOut(said.String())
+	if len(carved) == 0 {
+		return err
+	}
+	if edit := requireModules(dir, carved); edit != nil {
+		return edit
+	}
+	if run(goCmd(dir, "mod", "tidy")) != nil {
+		// The ambiguity is the failure to report; the second one is in the log
+		// just above it.
+		return err
+	}
+	return nil
+}
+
+// carvedOut reads `go mod tidy`'s reports of a package offered by more than one
+// module, and returns each module a package was carved out of against the
+// version to raise it to. Of the modules offering a package, the one whose path
+// the others extend is the one it was carved out of: a nested module takes its
+// directory out of the module around it, so versions of the outer module from
+// before the carve-out still carry a copy of the package.
+//
+// The version to raise to is the nested module's own. That names a version of
+// the outer module only when it is a pseudo-version, because a pseudo-version
+// names a commit and the two modules share a repository. A nested module with
+// tags of its own is left alone: its tags are not versions of the outer one.
+func carvedOut(said string) map[string]string {
+	type offering struct{ path, version string }
+	carved := map[string]string{}
+	for _, report := range strings.Split(said, "ambiguous import")[1:] {
+		var offered []offering
+		_, lines, _ := strings.Cut(report, "\n")
+		for line := range strings.Lines(lines) {
+			// A module of a report prints as "path version (directory)". Only
+			// the directory can hold a space, so nothing past its bracket is
+			// read.
+			head, _, bracketed := strings.Cut(line, " (")
+			fields := strings.Fields(head)
+			if !bracketed || len(fields) != 2 {
+				break
+			}
+			offered = append(offered, offering{fields[0], fields[1]})
+		}
+		for _, outer := range offered {
+			for _, inner := range offered {
+				if !strings.HasPrefix(inner.path, outer.path+"/") || !module.IsPseudoVersion(inner.version) {
+					continue
+				}
+				if semver.Compare(inner.version, carved[outer.path]) > 0 {
+					carved[outer.path] = inner.version
+				}
+			}
+		}
+	}
+	return carved
+}
+
+// requireModules raises the minimum required version of each module named.
 func requireModules(dir string, fixed map[string]string) error {
 	args := []string{"mod", "edit"}
 	for _, path := range slices.Sorted(maps.Keys(fixed)) {

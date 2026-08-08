@@ -1,0 +1,140 @@
+# A carve-out leaves two modules offering one package, and the fix is taken
+# anyway.
+#
+# testdata/anchor stands in for a dependency that has not been released in a
+# while, and sits under testdata/ so that it is a dependency rather than a
+# second module to remediate. It requires google.golang.org/genproto
+# v0.0.0-20220921223823-23cae91e6737, from before googleapis/go-genproto#1011
+# moved googleapis/rpc into a module of its own.
+#
+# Raising google.golang.org/grpc to the version that fixes GO-2026-6061 brings
+# that nested module in, and the version of the module around it still carries
+# a copy of google.golang.org/genproto/googleapis/rpc/status, so `go mod tidy`
+# finds the package in two modules and refuses. modfix reads both module paths
+# out of tidy's own report, sees that one nests inside the other, requires the
+# outer one at the nested one's version -- a commit from after the carve-out,
+# in the same repository -- and tidies again.
+#
+# anchor imports google.golang.org/grpc/credentials rather than
+# google.golang.org/grpc/status because it is that package's test that reaches
+# the ambiguous import.
+-- main.go --
+package main
+
+import "example.com/anchor"
+
+func main() { anchor.Use() }
+-- go.mod --
+module example.com/foo
+
+go 1.25.0
+
+require example.com/anchor v0.0.0
+
+require (
+	github.com/golang/protobuf v1.5.2 // indirect
+	google.golang.org/grpc v1.52.0 // indirect
+	google.golang.org/protobuf v1.28.1 // indirect
+)
+
+replace example.com/anchor => ./testdata/anchor
+-- go.sum --
+github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
+github.com/golang/protobuf v1.5.2 h1:ROPKBNFfQgOUMifHyP+KYbvpjbdoFNs+aK7DXlji0Tw=
+github.com/golang/protobuf v1.5.2/go.mod h1:XVQd3VNwM+JqD3oG2Ue2ip4fOMUkwXdXDdiuN0vRsmY=
+github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
+github.com/google/go-cmp v0.5.9/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+google.golang.org/grpc v1.52.0 h1:kd48UiU7EHsV4rnLyOJRuP/Il/UHE7gdDAQ+SZI7nZk=
+google.golang.org/grpc v1.52.0/go.mod h1:pu6fVzoFb+NBYNAvQL08ic+lvB2IojljRYuun5vorUY=
+google.golang.org/protobuf v1.26.0-rc.1/go.mod h1:jlhhOSvTdKEhbULTjvd4ARK9grFBp09yW+WbY/TyQbw=
+google.golang.org/protobuf v1.26.0/go.mod h1:9q0QmTI4eRPtz6boOQmLYwt+qCgq0jsYwAQnmE0givc=
+google.golang.org/protobuf v1.28.1 h1:d0NfwRgPtno5B1Wa6L2DAG+KivqkdutMf1UhdNx175w=
+google.golang.org/protobuf v1.28.1/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
+-- testdata/anchor/go.mod --
+module example.com/anchor
+
+require (
+	google.golang.org/genproto v0.0.0-20220921223823-23cae91e6737 // indirect
+	google.golang.org/grpc v1.49.0
+)
+
+go 1.21
+-- testdata/anchor/anchor.go --
+package anchor
+
+import _ "google.golang.org/grpc/credentials"
+
+// Use gives the module under test something to import.
+func Use() {}
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index 78e34d8..ea1c4ba 100644
+--- a/go.mod
++++ b/go.mod
+@@ -4,10 +4,11 @@ go 1.25.0
+ 
+ require example.com/anchor v0.0.0
+ 
++require google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
++
+ require (
+-	github.com/golang/protobuf v1.5.2 // indirect
+-	google.golang.org/grpc v1.52.0 // indirect
+-	google.golang.org/protobuf v1.28.1 // indirect
++	google.golang.org/grpc v1.82.1 // indirect
++	google.golang.org/protobuf v1.36.11 // indirect
+ )
+ 
+ replace example.com/anchor => ./testdata/anchor
+diff --git a/go.sum b/go.sum
+index ade2b8f..00d2a00 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,13 +1,14 @@
+-github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
+-github.com/golang/protobuf v1.5.2 h1:ROPKBNFfQgOUMifHyP+KYbvpjbdoFNs+aK7DXlji0Tw=
+-github.com/golang/protobuf v1.5.2/go.mod h1:XVQd3VNwM+JqD3oG2Ue2ip4fOMUkwXdXDdiuN0vRsmY=
+-github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+-github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
+-github.com/google/go-cmp v0.5.9/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+-golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+-google.golang.org/grpc v1.52.0 h1:kd48UiU7EHsV4rnLyOJRuP/Il/UHE7gdDAQ+SZI7nZk=
+-google.golang.org/grpc v1.52.0/go.mod h1:pu6fVzoFb+NBYNAvQL08ic+lvB2IojljRYuun5vorUY=
+-google.golang.org/protobuf v1.26.0-rc.1/go.mod h1:jlhhOSvTdKEhbULTjvd4ARK9grFBp09yW+WbY/TyQbw=
+-google.golang.org/protobuf v1.26.0/go.mod h1:9q0QmTI4eRPtz6boOQmLYwt+qCgq0jsYwAQnmE0givc=
+-google.golang.org/protobuf v1.28.1 h1:d0NfwRgPtno5B1Wa6L2DAG+KivqkdutMf1UhdNx175w=
+-google.golang.org/protobuf v1.28.1/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
++github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
++github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
++golang.org/x/net v0.53.0 h1:d+qAbo5L0orcWAr0a9JweQpjXF19LMXJE8Ey7hwOdUA=
++golang.org/x/net v0.53.0/go.mod h1:JvMuJH7rrdiCfbeHoo3fCQU24Lf5JJwT9W3sJFulfgs=
++golang.org/x/sys v0.43.0 h1:Rlag2XtaFTxp19wS8MXlJwTvoh8ArU6ezoyFsMyCTNI=
++golang.org/x/sys v0.43.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
++golang.org/x/text v0.36.0 h1:JfKh3XmcRPqZPKevfXVpI1wXPTqbkE5f7JA92a55Yxg=
++golang.org/x/text v0.36.0/go.mod h1:NIdBknypM8iqVmPiuco0Dh6P5Jcdk8lJL0CUebqK164=
++google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 h1:RmoJA1ujG+/lRGNfUnOMfhCy5EipVMyvUE+KNbPbTlw=
++google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
++google.golang.org/grpc v1.82.1 h1:NnAxzGRA0677vCa4BUkOAnO5+FfQqVl9iUXeD0IqcGE=
++google.golang.org/grpc v1.82.1/go.mod h1:yzTZ1TB1Z3SG+LIYaI+WiE8D5+PZ3ArnrSp8zF3+/ZA=
++google.golang.org/protobuf v1.36.11 h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
++google.golang.org/protobuf v1.36.11/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
+-- want_report.md --
+govulncheck found 1 vulnerability; this PR fixes 1:
+
+**[GO-2026-6061](https://pkg.go.dev/vuln/GO-2026-6061)**: Ambiguity after a module carve-out in google.golang.org/grpc
+
+<details>
+<summary>Details</summary>
+
+```
+  Module: google.golang.org/grpc
+    Found in: google.golang.org/grpc@v1.52.0
+    Fixed in: google.golang.org/grpc@v1.82.1
+    Example traces found: none. The scan reports which packages hold the
+      vulnerability rather than which calls reach it, so whether your code
+      reaches this one is not known here. It was remediated either way.
+```
+
+</details>

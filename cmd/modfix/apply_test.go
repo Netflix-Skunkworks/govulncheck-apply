@@ -18,6 +18,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // moduleDir writes goMod to a fresh temp directory and returns the directory.
@@ -198,6 +200,97 @@ replace example.com/other => example.com/other v1.0.0
 			}
 			if got := goModText(t, dir); got != tt.want {
 				t.Errorf("bumpReplacedModules(%v) produced go.mod:\n%s\nwant:\n%s", fixed, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCarvedOut(t *testing.T) {
+	tests := []struct {
+		name string
+		said string
+		want map[string]string
+	}{
+		{
+			name: "a carve-out, as go prints it",
+			said: `go: example.com/foo imports
+	google.golang.org/grpc/status imports
+	google.golang.org/genproto/googleapis/rpc/status: ambiguous import: found package google.golang.org/genproto/googleapis/rpc/status in multiple modules:
+	google.golang.org/genproto v0.0.0-20220921223823-23cae91e6737 (/go/pkg/mod/google.golang.org/genproto@v0.0.0-20220921223823-23cae91e6737/googleapis/rpc/status)
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 (/go/pkg/mod/google.golang.org/genproto/googleapis/rpc@v0.0.0-20260414002931-afd174a4e478/status)
+`,
+			want: map[string]string{"google.golang.org/genproto": "v0.0.0-20260414002931-afd174a4e478"},
+		},
+		{
+			name: "one module carved into twice takes the higher version",
+			said: `	example.com/a/one/pkg: ambiguous import: found package example.com/a/one/pkg in multiple modules:
+	example.com/a v0.0.0-20200101000000-aaaaaaaaaaaa (dir)
+	example.com/a/two v0.0.0-20200202000000-bbbbbbbbbbbb (dir)
+	example.com/a/one v0.0.0-20200303000000-cccccccccccc (dir)
+`,
+			want: map[string]string{"example.com/a": "v0.0.0-20200303000000-cccccccccccc"},
+		},
+		{
+			// A tag of the nested module names no version of the outer one.
+			name: "a nested module carrying its own tags is left alone",
+			said: `	example.com/a/sub/pkg: ambiguous import: found package example.com/a/sub/pkg in multiple modules:
+	example.com/a v1.0.0 (dir)
+	example.com/a/sub v2.0.0 (dir)
+`,
+			want: map[string]string{},
+		},
+		{
+			name: "two modules neither nesting in the other",
+			said: `	example.com/one/pkg: ambiguous import: found package example.com/one/pkg in multiple modules:
+	example.com/one v0.0.0-20200101000000-aaaaaaaaaaaa (dir)
+	example.com/two v0.0.0-20200101000000-bbbbbbbbbbbb (dir)
+`,
+			want: map[string]string{},
+		},
+		{
+			// Nesting that only holds across the boundary between two reports.
+			name: "nesting only across two reports",
+			said: `	example.com/a/pkg: ambiguous import: found package example.com/a/pkg in multiple modules:
+	example.com/a v0.0.0-20200101000000-aaaaaaaaaaaa (dir)
+	example.com/x v0.0.0-20200101000000-bbbbbbbbbbbb (dir)
+	example.com/b/pkg: ambiguous import: found package example.com/b/pkg in multiple modules:
+	example.com/a/sub v0.0.0-20200303000000-cccccccccccc (dir)
+	example.com/y v0.0.0-20200101000000-dddddddddddd (dir)
+`,
+			want: map[string]string{},
+		},
+		{
+			name: "a module cache path holding a space",
+			said: `	example.com/a/pkg: ambiguous import: found package example.com/a/pkg in multiple modules:
+	example.com/a v0.0.0-20200101000000-aaaaaaaaaaaa (/Users/first last/go/pkg/mod/example.com/a)
+	example.com/a/sub v0.0.0-20200202000000-bbbbbbbbbbbb (/Users/first last/go/pkg/mod/example.com/a/sub)
+`,
+			want: map[string]string{"example.com/a": "v0.0.0-20200202000000-bbbbbbbbbbbb"},
+		},
+		{
+			name: "module lines with no report above them",
+			said: `	example.com/a v0.0.0-20200101000000-aaaaaaaaaaaa (dir)
+	example.com/a/sub v0.0.0-20200202000000-bbbbbbbbbbbb (dir)
+`,
+			want: map[string]string{},
+		},
+		{
+			name: "a failure that is not an ambiguity",
+			said: `go: example.com/foo imports
+	example.com/gone: no required module provides package example.com/gone
+`,
+			want: map[string]string{},
+		},
+		{
+			name: "nothing said",
+			said: "",
+			want: map[string]string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(carvedOut(tt.said), tt.want); diff != "" {
+				t.Errorf("carvedOut() diff (-got +want):\n%s", diff)
 			}
 		})
 	}
