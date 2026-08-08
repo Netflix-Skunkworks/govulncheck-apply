@@ -28,16 +28,4 @@ govulncheck found 1 vulnerability; this PR fixes 0, 1 does not have a fix ready 
 
 **[GO-2020-0017](https://pkg.go.dev/vuln/GO-2020-0017)**: Authentication bypass in github.com/dgrijalva/jwt-go
 
-<details>
-<summary>Details</summary>
-
-```
-  Module: github.com/dgrijalva/jwt-go
-    Found in: github.com/dgrijalva/jwt-go@v3.2.0+incompatible
-    Fixed in: no fix published
-    Example traces found: none. The scan reports which packages hold the
-      vulnerability rather than which calls reach it, so whether your code
-      reaches this one is not known here. It was remediated either way.
-```
-
-</details>
+    github.com/dgrijalva/jwt-go v3.2.0+incompatible, no fix published

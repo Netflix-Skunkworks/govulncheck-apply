@@ -56,33 +56,8 @@ govulncheck found 2 vulnerabilities; this PR fixes 2:
 
 **[GO-TEST-0001](https://pkg.go.dev/vuln/GO-TEST-0001)**: Panic on malformed language tag in golang.org/x/text
 
-<details>
-<summary>Details</summary>
-
-```
-  Module: golang.org/x/text
-    Found in: golang.org/x/text@v0.3.5
-    Fixed in: golang.org/x/text@v0.3.7
-    Selected: golang.org/x/text@v0.3.8
-    Example traces found: none. The scan reports which packages hold the
-      vulnerability rather than which calls reach it, so whether your code
-      reaches this one is not known here. It was remediated either way.
-```
-
-</details>
+    golang.org/x/text v0.3.5 -> v0.3.7 (selected v0.3.8)
 
 **[GO-TEST-0002](https://pkg.go.dev/vuln/GO-TEST-0002)**: Denial of service in golang.org/x/text
 
-<details>
-<summary>Details</summary>
-
-```
-  Module: golang.org/x/text
-    Found in: golang.org/x/text@v0.3.7
-    Fixed in: golang.org/x/text@v0.3.8
-    Example traces found: none. The scan reports which packages hold the
-      vulnerability rather than which calls reach it, so whether your code
-      reaches this one is not known here. It was remediated either way.
-```
-
-</details>
+    golang.org/x/text v0.3.7 -> v0.3.8

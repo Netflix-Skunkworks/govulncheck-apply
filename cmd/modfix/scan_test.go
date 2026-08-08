@@ -15,7 +15,6 @@
 package main
 
 import (
-	"go/token"
 	"strings"
 	"testing"
 
@@ -47,19 +46,14 @@ func TestToolchain(t *testing.T) {
 }
 
 // TestParse checks what a stream is read for: the highest fix per module, and
-// what to say about each advisory. The three granularities govulncheck emits per
-// advisory have to fold into one, taking the trace from the only one that has it.
+// what to say about each advisory. The module and package granularities
+// govulncheck emits per advisory have to fold into one, taking the package name
+// from the only one that has it.
 func TestParse(t *testing.T) {
 	stream := `
 {"osv": {"id": "GO-TEST-0001", "summary": "Panic in x/text", "database_specific": {"url": "https://pkg.go.dev/vuln/GO-TEST-0001"}}}
 {"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [{"module": "golang.org/x/text", "version": "v0.3.5"}]}}
 {"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [{"module": "golang.org/x/text", "version": "v0.3.5", "package": "golang.org/x/text/language"}]}}
-{"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [
-  {"module": "golang.org/x/text", "version": "v0.3.5", "package": "golang.org/x/text/language", "function": "Parse", "position": {"filename": "language/parse.go", "line": 33, "column": 6}},
-  {"module": "example.com/m", "package": "example.com/m", "function": "main", "position": {"filename": "main.go", "line": 10, "column": 28}}]}}
-{"finding": {"osv": "GO-TEST-0001", "fixed_version": "v0.3.7", "trace": [
-  {"module": "golang.org/x/text", "version": "v0.3.5", "package": "golang.org/x/text/language", "function": "Compose", "position": {"filename": "language/compose.go", "line": 12, "column": 6}},
-  {"module": "example.com/m", "package": "example.com/m", "function": "tag", "position": {"filename": "tag.go", "line": 4, "column": 9}}]}}
 {"finding": {"osv": "GO-TEST-0002", "fixed_version": "v0.3.8", "trace": [{"module": "golang.org/x/text", "version": "v0.3.7"}]}}
 {"finding": {"osv": "GO-TEST-0003", "trace": [{"module": "example.com/unfixable", "version": "v1.0.0"}]}}
 {"osv": {"id": "GO-TEST-0004", "database_specific": {"url": "https://pkg.go.dev/vuln/GO-TEST-0004"}}}
@@ -71,36 +65,11 @@ func TestParse(t *testing.T) {
 		modules:   map[string]string{"golang.org/x/text": "v0.3.8"},
 		goVersion: "v1.21.9",
 	}
-	// The called-function granularity is the only one whose traces are kept, and
-	// every one of them is: govulncheck emits a finding per reachable symbol, and
-	// which of them a reader recognizes is not for parse to guess. callSite renders
-	// each; TestCallSite covers that rendering.
 	wantReported := map[string]vuln{
 		"GO-TEST-0001": {
 			osv: "GO-TEST-0001", url: "https://pkg.go.dev/vuln/GO-TEST-0001",
 			summary: "Panic in x/text", module: "golang.org/x/text",
 			pkg: "golang.org/x/text/language", found: "v0.3.5", fixedIn: "v0.3.7",
-			traces: [][]frame{{
-				{
-					Module: "golang.org/x/text", Version: "v0.3.5",
-					Package: "golang.org/x/text/language", Function: "Parse",
-					Position: &token.Position{Filename: "language/parse.go", Line: 33, Column: 6},
-				},
-				{
-					Module: "example.com/m", Package: "example.com/m", Function: "main",
-					Position: &token.Position{Filename: "main.go", Line: 10, Column: 28},
-				},
-			}, {
-				{
-					Module: "golang.org/x/text", Version: "v0.3.5",
-					Package: "golang.org/x/text/language", Function: "Compose",
-					Position: &token.Position{Filename: "language/compose.go", Line: 12, Column: 6},
-				},
-				{
-					Module: "example.com/m", Package: "example.com/m", Function: "tag",
-					Position: &token.Position{Filename: "tag.go", Line: 4, Column: 9},
-				},
-			}},
 		},
 		"GO-TEST-0002": {osv: "GO-TEST-0002", module: "golang.org/x/text", found: "v0.3.7", fixedIn: "v0.3.8"},
 		"GO-TEST-0003": {osv: "GO-TEST-0003", module: "example.com/unfixable", found: "v1.0.0"},
@@ -114,8 +83,8 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse(%q) failed: %v", stream, err)
 	}
-	// Compared whole: nothing else may reach fix.modules, and the trace's second
-	// frame and the stdlib fix are both things that could wrongly land there.
+	// Compared whole: nothing else may reach fix.modules, and the stdlib fix is
+	// the thing that could wrongly land there.
 	if diff := cmp.Diff(fix, wantFix, unexported); diff != "" {
 		t.Errorf("parse() fixes differ (-got +want):\n%s", diff)
 	}

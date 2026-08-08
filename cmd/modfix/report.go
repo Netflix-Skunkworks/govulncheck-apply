@@ -17,11 +17,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"path"
-	"slices"
-	"strconv"
 	"strings"
-	"unicode"
 )
 
 const stdlib = "stdlib"
@@ -30,14 +26,13 @@ const stdlib = "stdlib"
 type vuln struct {
 	osv           string
 	url           string
-	summary       string    // the advisory's own one-line prose, if it publishes one
-	module        string    // the vulnerable module's path, or stdlib
-	pkg           string    // the vulnerable package, where a finding named one
-	found         string    // the version of it the first scan found
-	selected      string    // the version the run left selected, empty if unchanged
-	fixedIn       string    // the version that fixes it, empty if none is published
-	traces        [][]frame // the calls that reach it, empty if the module makes none
-	stillReported bool      // whether the last pass reported it again
+	summary       string // the advisory's own one-line prose, if it publishes one
+	module        string // the vulnerable module's path, or stdlib
+	pkg           string // the vulnerable package, where a finding named one
+	found         string // the version of it the first scan found
+	selected      string // the version the run left selected, empty if unchanged
+	fixedIn       string // the version that fixes it, empty if none is published
+	stillReported bool   // whether the last pass reported it again
 }
 
 // The two ways a vulnerability can be left behind: the database publishes no
@@ -95,85 +90,44 @@ func agree(n int, one, many string) string {
 	return many
 }
 
-// entry renders one advisory.
+// entry renders one advisory as a title over the versions of the module it is
+// against. Those are indented four spaces, which markdown reads as a code
+// block, so a module path and its versions come out in a monospace font.
 func entry(v vuln) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s**", advisory(v))
 	if v.summary != "" {
 		fmt.Fprintf(&b, ": %s", oneLine(v.summary))
 	}
-	b.WriteString("\n\n<details>\n<summary>Details</summary>\n\n```\n")
-	if v.module == stdlib {
-		b.WriteString("  Standard library\n")
-	} else {
-		fmt.Fprintf(&b, "  Module: %s\n", oneLine(v.module))
-	}
-	fmt.Fprintf(&b, "    Found in: %s\n", oneLine(at(v, v.found)))
-	fmt.Fprintf(&b, "    Fixed in: %s\n", fixedIn(v))
+	fmt.Fprintf(&b, "\n\n    %s\n", oneLine(versions(v)))
+	return b.String()
+}
+
+// versions names the vulnerable module, the version the scan found, and where
+// the run left it.
+func versions(v vuln) string {
+	module, found := vulnerableModule(v), toolchainName(v.module, v.found)
+	var noted []string
 	// The version that fixes an advisory is a minimum, so minimal version
 	// selection can land above it, and naming only the minimum next to a diff
-	// that says otherwise reads as a mistake. govulncheck has no line for this,
-	// so it gets one in the same shape as the two above.
+	// that says otherwise reads as a mistake. An advisory with no fix of its own
+	// needs this too, because another advisory's fix can raise the same module.
 	if v.selected != "" && v.selected != v.found && v.selected != v.fixedIn {
-		fmt.Fprintf(&b, "    Selected: %s\n", oneLine(at(v, v.selected)))
+		noted = append(noted, "selected "+toolchainName(v.module, v.selected))
 	}
-	b.WriteString(traces(v.traces))
-	b.WriteString("```\n\n</details>\n")
-	return b.String()
-}
-
-func fixedIn(v vuln) string {
+	var line string
 	if v.fixedIn == "" {
-		return noFix
-	}
-	in := at(v, v.fixedIn)
-	if v.stillReported {
-		in += " (" + fixNotTaken + ")"
-	}
-	return in
-}
-
-func at(v vuln, version string) string {
-	return vulnerableModule(v) + "@" + toolchainName(v.module, version)
-}
-
-const noTraces = `    Example traces found: none. The scan reports which packages hold the
-      vulnerability rather than which calls reach it, so whether your code
-      reaches this one is not known here. It was remediated either way.
-`
-
-// traces renders the calls that reach the vulnerable symbol, numbered as
-// govulncheck numbers them, or [noTraces] where the scan named no call.
-func traces(traces [][]frame) string {
-	type call struct{ reaches, sentence string }
-	var reached []call
-	seen := map[string]bool{}
-	for _, trace := range traces {
-		sentence := callSite(trace)
-		if sentence == "" || seen[sentence] {
-			continue
+		line = fmt.Sprintf("%s %s, %s", module, found, noFix)
+	} else {
+		line = fmt.Sprintf("%s %s -> %s", module, found, toolchainName(v.module, v.fixedIn))
+		if v.stillReported {
+			noted = append(noted, fixNotTaken)
 		}
-		seen[sentence] = true
-		reached = append(reached, call{symbol(trace[0]), sentence})
 	}
-	if len(reached) == 0 {
-		return noTraces
+	if len(noted) == 0 {
+		return line
 	}
-	// Ordered by the symbol reached rather than by the sentence, which starts
-	// at the call site: govulncheck orders its own this way, and the same
-	// advisory should read the same in both reports.
-	slices.SortFunc(reached, func(a, b call) int {
-		if c := strings.Compare(a.reaches, b.reaches); c != 0 {
-			return c
-		}
-		return strings.Compare(a.sentence, b.sentence)
-	})
-	var b strings.Builder
-	b.WriteString("    Example traces found:\n")
-	for i, call := range reached {
-		fmt.Fprintf(&b, "      #%d: %s\n", i+1, call.sentence)
-	}
-	return b.String()
+	return fmt.Sprintf("%s (%s)", line, strings.Join(noted, ", "))
 }
 
 // vulnerableModule names what carries the vulnerability. For the standard
@@ -212,68 +166,4 @@ func advisory(v vuln) string {
 // arrives spanning lines.
 func oneLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")
-}
-
-// callSite renders how a module's own code reaches a vulnerable symbol, in
-// govulncheck's own words. The last frame of the trace is the call in that
-// code, trace[0] is the symbol it reaches, and the frame between them is what
-// it calls to get there. Only the called-function granularity carries the
-// positions, so the coarser findings render as nothing.
-//
-// What the caller reaches for is named rather than left out, because naming
-// only the two ends reads as a call that is not there: it is
-// grpc.ClientConn.Invoke that reaches the vulnerable symbol, not the protobuf
-// method that called it.
-func callSite(trace []frame) string {
-	if len(trace) < 2 {
-		return ""
-	}
-	caller := trace[len(trace)-1]
-	if caller.Position == nil || !caller.Position.IsValid() {
-		return ""
-	}
-	if len(trace) == 2 {
-		return fmt.Sprintf("%s: %s calls %s", caller.Position, symbol(caller), symbol(trace[0]))
-	}
-	return fmt.Sprintf("%s: %s calls %s, which eventually calls %s",
-		caller.Position, symbol(caller), symbol(trace[len(trace)-2]), symbol(trace[0]))
-}
-
-// symbol names a frame's function the way govulncheck's own report does, so
-// that a reader of both sees the same names. A pointer receiver is written
-// without the star, as a call on it reads.
-func symbol(f frame) string {
-	// A closure arrives as the function it is declared in, suffixed.
-	name, _, _ := strings.Cut(f.Function, "$")
-	if f.Receiver != "" {
-		name = strings.TrimPrefix(f.Receiver, "*") + "." + name
-	}
-	if f.Package != "" {
-		name = packageName(f.Package) + "." + name
-	}
-	return name
-}
-
-// packageName is the name a package is imported under, which is not always the
-// last element of its import path: a major version suffix names the directory
-// above it, and the rest of a name that is not an identifier is dropped, so
-// github.com/dgrijalva/jwt-go reads as jwt. This is goimports' heuristic, by
-// way of govulncheck, which keeps its copy in an internal package.
-func packageName(importPath string) string {
-	base := path.Base(importPath)
-	if major, err := strconv.Atoi(strings.TrimPrefix(base, "v")); err == nil && major > 0 {
-		if dir := path.Dir(importPath); dir != "." {
-			base = path.Base(dir)
-		}
-	}
-	base = strings.TrimPrefix(base, "go-")
-	if i := strings.IndexFunc(base, notIdentifier); i >= 0 {
-		base = base[:i]
-	}
-	return base
-}
-
-// notIdentifier reports whether r cannot appear in a Go identifier.
-func notIdentifier(r rune) bool {
-	return r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r)
 }

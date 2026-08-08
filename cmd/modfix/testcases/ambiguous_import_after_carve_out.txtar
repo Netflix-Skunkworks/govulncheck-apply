@@ -125,16 +125,4 @@ govulncheck found 1 vulnerability; this PR fixes 1:
 
 **[GO-2026-6061](https://pkg.go.dev/vuln/GO-2026-6061)**: Ambiguity after a module carve-out in google.golang.org/grpc
 
-<details>
-<summary>Details</summary>
-
-```
-  Module: google.golang.org/grpc
-    Found in: google.golang.org/grpc@v1.52.0
-    Fixed in: google.golang.org/grpc@v1.82.1
-    Example traces found: none. The scan reports which packages hold the
-      vulnerability rather than which calls reach it, so whether your code
-      reaches this one is not known here. It was remediated either way.
-```
-
-</details>
+    google.golang.org/grpc v1.52.0 -> v1.82.1
