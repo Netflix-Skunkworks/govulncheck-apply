@@ -100,32 +100,8 @@ govulncheck found 2 vulnerabilities; this PR fixes 2:
 
 **[GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
 
-<details>
-<summary>Details</summary>
-
-```
-  Module: golang.org/x/text
-    Found in: golang.org/x/text@v0.3.5
-    Fixed in: golang.org/x/text@v0.3.7
-    Example traces found: none. The scan reports which packages hold the
-      vulnerability rather than which calls reach it, so whether your code
-      reaches this one is not known here. It was remediated either way.
-```
-
-</details>
+    golang.org/x/text v0.3.5 -> v0.3.7
 
 **[GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
 
-<details>
-<summary>Details</summary>
-
-```
-  Module: golang.org/x/text
-    Found in: golang.org/x/text@v0.3.5
-    Fixed in: golang.org/x/text@v0.3.7
-    Example traces found: none. The scan reports which packages hold the
-      vulnerability rather than which calls reach it, so whether your code
-      reaches this one is not known here. It was remediated either way.
-```
-
-</details>
+    golang.org/x/text v0.3.5 -> v0.3.7

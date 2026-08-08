@@ -14,8 +14,6 @@
 
 package main
 
-import "go/token"
-
 // message is a single entry in the govulncheck -json stream. Entries other than
 // findings and advisories decode to nil fields and are skipped.
 type message struct {
@@ -34,25 +32,20 @@ type osv struct {
 }
 
 // finding reports one vulnerable module in the dependency graph. govulncheck
-// emits a finding per trace granularity (module, package, called function), so
-// the same OSV can appear several times with an identical module and fix.
-// FixedVersion is empty when the database publishes no fix for the OSV.
+// emits a finding per granularity up to the one asked for, so the same OSV can
+// arrive twice: once naming the vulnerable package and once naming only the
+// module holding it. FixedVersion is empty when the database publishes no fix
+// for the OSV.
 type finding struct {
 	OSV          string  `json:"osv"`
 	FixedVersion string  `json:"fixed_version"`
 	Trace        []frame `json:"trace"`
 }
 
-// frame is one step of a finding's call trace. trace[0] is the vulnerable module,
-// and at the called-function granularity the frames run outwards from the
-// vulnerable symbol to the call in the scanned module's own code.
+// frame is one step of a finding's trace. trace[0] is the vulnerable module,
+// which is the only step the scan's granularity produces.
 type frame struct {
-	Module   string `json:"module"`
-	Version  string `json:"version"`
-	Package  string `json:"package"`
-	Function string `json:"function"`
-	Receiver string `json:"receiver"`
-	// Position is govulncheck's own, which is field for field go/token's, so its
-	// String and IsValid render and validate a frame the way govulncheck does.
-	Position *token.Position `json:"position"`
+	Module  string `json:"module"`
+	Version string `json:"version"`
+	Package string `json:"package"`
 }

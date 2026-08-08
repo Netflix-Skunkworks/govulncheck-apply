@@ -177,16 +177,10 @@ func parse(r io.Reader) (fixes, map[string]vuln, error) {
 		if f.FixedVersion != "" {
 			v.fixedIn = f.FixedVersion
 		}
-		// Only the package and called-function granularities name a package,
-		// and the module-granularity finding can arrive first.
+		// Only the package granularity names a package, and the
+		// module-granularity finding can arrive first.
 		if v.pkg == "" {
 			v.pkg = vulnerable.Package
-		}
-		// Only the called-function granularity carries a trace worth rendering.
-		// Every one is kept: an advisory can be reached a dozen ways, and which
-		// of them a reader recognizes is not for this to guess.
-		if len(f.Trace) > 1 {
-			v.traces = append(v.traces, f.Trace)
 		}
 		if vulnerable.Module == "" || f.FixedVersion == "" {
 			continue
