@@ -52,6 +52,22 @@ func Toolchain(directives map[string]string) string {
 	return "local"
 }
 
+// Env returns the space-separated KEY=VALUE pairs an env directive sets, and
+// none for a case without one. A case sets the directive where what it asserts
+// is that the run overrides it, since a go command default that varies with the
+// machine cannot otherwise be reproduced. A pair that is not KEY=VALUE is an
+// error rather than something to pass on: the go command would leave the
+// variable unset, which is the ambient behaviour the case exists to rule out.
+func Env(directives map[string]string) ([]string, error) {
+	pairs := strings.Fields(directives["env"])
+	for _, pair := range pairs {
+		if name, _, ok := strings.Cut(pair, "="); !ok || name == "" {
+			return nil, fmt.Errorf("env directive holds %q, want KEY=VALUE", pair)
+		}
+	}
+	return pairs, nil
+}
+
 // Description returns the case's `#` comments with the markers stripped, for the
 // repro command to print.
 func Description(comment []byte) string {
