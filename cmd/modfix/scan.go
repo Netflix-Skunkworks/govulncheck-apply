@@ -80,9 +80,20 @@ func localGoVersion() (string, error) {
 	return strings.TrimPrefix(strings.TrimSpace(out.String()), "go"), nil
 }
 
+// operatingSystems are the GOOS values every module is scanned under. Which
+// files a package is built from is decided by build constraints, and GOOS is
+// one of them, so a scan under a single operating system never reaches what the
+// files written for the others import. GOARCH is left at whatever the machine
+// is: the files an architecture selects seldom import anything the rest do not.
+var operatingSystems = []string{"linux", "windows", "darwin"}
+
 // scan runs govulncheck over the module in dir, against the vulnerability
 // database at db, or govulncheck's own default if db is empty. It returns the
 // fixes reported, and what was reported about each advisory, keyed by OSV id.
+//
+// An operating system the module does not target is passed over rather than
+// failing it. A module passed over everywhere is an error: no scan read it, so
+// nothing can call it clean.
 func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 	// Scanning at package rather than symbol granularity, because a fix is worth
 	// applying whether or not the vulnerable function is called, and because the
@@ -96,51 +107,107 @@ func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 	if db != "" {
 		args = append(args, "-db", db)
 	}
-	cmd := exec.Command(govulncheck, append(args, "./...")...)
-	cmd.Dir = dir
-	// go.work.sum holds hashes that are not in the workspace modules' own
-	// go.sum files, and GOWORK=off does not consult it, so loading the packages
-	// fails without -mod=mod to let the go command write the hashes it needs.
-	// govulncheck is not a go subcommand, so GOFLAGS is the only way to reach
-	// it.
-	cmd.Env = append(goEnv(), "GOFLAGS=-mod=mod")
-	cmd.Stderr = os.Stderr
-	announce(cmd)
-	// With -json, govulncheck exits 0 whether or not it found anything, so a
-	// failure here is either a module it could not load or one that held no
-	// package to load in the first place.
-	out, err := cmd.Output()
-	if err != nil {
-		// It's possible that we just scanned a dir tree with no Go packages. If
-		// so, govulncheck will err: but we don't care about those errors. So we
-		// ignore those. (Unfortunately govulncheck doesn't expose that error so
-		// we have to infer it ourselves)
-		empty, listErr := noPackages(dir)
-		if listErr != nil {
-			return fixes{}, nil, listErr
+	args = append(args, "./...")
+	// The streams are read as one. Keeping the highest fix reported for a module
+	// is what parse already does across findings, and it makes no difference
+	// which scan a finding came from.
+	var streams []byte
+	var scanned bool
+	var skipped []string
+	for _, goos := range operatingSystems {
+		cmd := exec.Command(govulncheck, args...)
+		cmd.Dir = dir
+		// go.work.sum holds hashes that are not in the workspace modules' own
+		// go.sum files, and GOWORK=off does not consult it, so loading the
+		// packages fails without -mod=mod to let the go command write the hashes
+		// it needs. govulncheck is not a go subcommand, so GOFLAGS is the only
+		// way to reach it.
+		cmd.Env = append(goEnv(), "GOFLAGS=-mod=mod", "GOOS="+goos)
+		var said bytes.Buffer
+		cmd.Stderr = io.MultiWriter(os.Stderr, &said)
+		announce(cmd)
+		// With -json, govulncheck exits 0 whether or not it found anything, so a
+		// failure here is either a module it could not load or one that held no
+		// package to load in the first place.
+		out, err := cmd.Output()
+		if err != nil {
+			if excludedByBuildConstraints(said.String()) {
+				fmt.Fprintf(os.Stderr, "Build constraints exclude packages %q needs for %s; skipping that scan.\n", filepath.ToSlash(dir), goos)
+				skipped = append(skipped, goos)
+				continue
+			}
+			// govulncheck fails the same way for a module holding no package to
+			// scan as for one it could not load, and its output does not say
+			// which, so the go command is asked.
+			empty, listErr := noPackages(dir, goos)
+			if listErr != nil {
+				return fixes{}, nil, listErr
+			}
+			if !empty {
+				return fixes{}, nil, fmt.Errorf("%s under GOOS=%s: %v", commandLine(cmd), goos, err)
+			}
+			fmt.Fprintf(os.Stderr, "No package in %q to scan for %s.\n", filepath.ToSlash(dir), goos)
+			continue
 		}
-		if !empty {
-			return fixes{}, nil, fmt.Errorf("%s: %v", commandLine(cmd), err)
-		}
-		// Returning rather than falling through: the scan did not run, so its
-		// output holds nothing to find.
-		fmt.Fprintf(os.Stderr, "No package in %q to scan; nothing to fix.\n", filepath.ToSlash(dir))
-		return fixes{}, nil, nil
+		streams = append(streams, out...)
+		scanned = true
 	}
-	return parse(bytes.NewReader(out))
+	// A module with no package under any operating system is a directory tree
+	// with no Go in it, and there is nothing to fix in that. A module whose
+	// packages were passed over is one no scan read.
+	if !scanned && len(skipped) > 0 {
+		return fixes{}, nil, fmt.Errorf("build constraints exclude the packages the module needs under %s, and no other operating system found one to scan", strings.Join(skipped, ", "))
+	}
+	return parse(bytes.NewReader(streams))
 }
 
-func noPackages(dir string) (bool, error) {
+// excludedByBuildConstraints reports whether every error govulncheck raised
+// while loading a module's packages is a package the build constraints left
+// with no file to build it from, which is what a module written for another
+// operating system looks like:
+//
+//	There are errors with the provided package patterns:
+//
+//	-: build constraints exclude all Go files in /go/pkg/mod/golang.org/x/sys@v0.47.0/windows
+//
+// Output naming no error at all is not this, and neither is an exclusion the
+// loader reported with the import chain that reached it, which runs over
+// several lines.
+func excludedByBuildConstraints(said string) bool {
+	_, lines, ok := strings.Cut(said, "There are errors with the provided package patterns:")
+	if !ok {
+		return false
+	}
+	lines, _, _ = strings.Cut(lines, "For details on package patterns")
+	var excluded bool
+	for line := range strings.Lines(lines) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// A loading error prints as "position: message". A position holds no
+		// space, so the first ": " is the separator.
+		_, text, _ := strings.Cut(line, ": ")
+		if !strings.HasPrefix(text, "build constraints exclude all Go files in ") {
+			return false
+		}
+		excluded = true
+	}
+	return excluded
+}
+
+func noPackages(dir, goos string) (bool, error) {
 	cmd := goCmd(dir, "list", "./...")
 	// The same -mod as the scan: without it the go command stops to complain
 	// that go.mod needs updating, for the workspace modules whose requirements
-	// only go.work.sum was supplying.
-	cmd.Env = append(cmd.Env, "GOFLAGS=-mod=mod")
+	// only go.work.sum was supplying. The same GOOS too, so that the packages
+	// counted are the ones the scan was looking for.
+	cmd.Env = append(cmd.Env, "GOFLAGS=-mod=mod", "GOOS="+goos)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, os.Stderr
 	announce(cmd)
 	if err := cmd.Run(); err != nil {
-		return false, fmt.Errorf("%s: %v", commandLine(cmd), err)
+		return false, fmt.Errorf("%s under GOOS=%s: %v", commandLine(cmd), goos, err)
 	}
 	return strings.TrimSpace(out.String()) == "", nil
 }

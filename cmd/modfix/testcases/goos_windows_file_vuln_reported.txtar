@@ -1,0 +1,93 @@
+# A module that loads under every operating system, holding one file that only
+# Windows builds.
+#
+# This is the quiet half of the same build constraint. Under GOOS=linux the
+# module reads cleanly: main.go supplies func main, the packages list, the scan
+# runs and succeeds. What goes missing is silent. golang.org/x/sys/windows is
+# reached only from the file that Linux leaves out, so GO-2026-5024 is never
+# found, and the pull request says the module's only vulnerability was the
+# golang.org/x/text one.
+#
+# That is worse than the failure goos_windows_dependency_scans covers, because a
+# run that cannot read a module says so and stops, while this one reports a
+# module as fixed while a Windows build of it stays vulnerable.
+#
+# Both advisories reaching one `go mod edit` is what the diff asserts: the fixes
+# the scans report are merged, in the same keep-the-highest way that findings
+# within one scan are. A run that scanned under one operating system would raise
+# golang.org/x/text alone.
+-- go.mod --
+module example.com/root
+
+go 1.25.0
+
+require (
+	golang.org/x/sys v0.20.0
+	golang.org/x/text v0.3.5
+)
+-- go.sum --
+golang.org/x/sys v0.20.0 h1:Od9JTbYCk261bKm4M/mw7AklTlFYIa0bIp9BgSm1S8Y=
+golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+-- main.go --
+package main
+
+import "golang.org/x/text/language"
+
+func main() { println(tag()) }
+
+// tag reaches language.Parse, the symbol GO-2021-0113 affects.
+func tag() string {
+	t, _ := language.Parse("en-US")
+	return t.String()
+}
+-- service_windows.go --
+package main
+
+// The _windows.go suffix is a build constraint in itself: this file is part of
+// package main only when GOOS is windows, and golang.org/x/sys/windows is in
+// the module's import graph only when this file is.
+import "golang.org/x/sys/windows"
+
+// service reaches NewLazySystemDLL, in the package GO-2026-5024 affects.
+func service() string { return windows.NewLazySystemDLL("kernel32.dll").Name }
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index cc44816..17e53d1 100644
+--- a/go.mod
++++ b/go.mod
+@@ -3,6 +3,6 @@ module example.com/root
+ go 1.25.0
+ 
+ require (
+-	golang.org/x/sys v0.20.0
+-	golang.org/x/text v0.3.5
++	golang.org/x/sys v0.44.0
++	golang.org/x/text v0.3.7
+ )
+diff --git a/go.sum b/go.sum
+index c0837de..31422cf 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,5 +1,4 @@
+-golang.org/x/sys v0.20.0 h1:Od9JTbYCk261bKm4M/mw7AklTlFYIa0bIp9BgSm1S8Y=
+-golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+-golang.org/x/text v0.3.5 h1:i6eZZ+zk0SOf0xgBpEpPD18qWcJda6q1sxt3S0kzyUQ=
+-golang.org/x/text v0.3.5/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+-golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
++golang.org/x/sys v0.44.0 h1:ildZl3J4uzeKP07r2F++Op7E9B29JRUy+a27EibtBTQ=
++golang.org/x/sys v0.44.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
++golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
++golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
+-- want_report.md --
+govulncheck found 2 vulnerabilities; this PR fixes 2:
+
+**[GO-2021-0113](https://pkg.go.dev/vuln/GO-2021-0113)**: Out-of-bounds read in golang.org/x/text
+
+    golang.org/x/text v0.3.5 -> v0.3.7
+
+**[GO-2026-5024](https://pkg.go.dev/vuln/GO-2026-5024)**: Integer overflow in NewNTUnicodeString in golang.org/x/sys/windows
+
+    golang.org/x/sys v0.20.0 -> v0.44.0

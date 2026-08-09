@@ -1,0 +1,40 @@
+# A module no scan can read, which ends the run.
+#
+# The module's only file is built on Windows, and the package that file imports
+# is built on Plan 9, which is none of the operating systems scanned. So under
+# GOOS=windows the file is part of package root and the package it imports has
+# nothing to build it from, and under GOOS=linux and GOOS=darwin the file is not
+# part of any package at all and `go list ./...` matches nothing.
+#
+# Between them those are the two failures the scan is allowed to carry on past,
+# and either alone is harmless: a module written for another operating system is
+# passed over, and a directory tree with no Go package in it has nothing to fix.
+# Together they leave a module whose package was there and which no scan read,
+# and calling that clean is the reporting failure this whole sweep exists to
+# prevent.
+#
+# So the run stops. The exit of 1 and the empty want_diff.txt are that: nothing
+# was changed and no report was written, which is what has NDR mail the
+# repository's owners rather than open a pull request.
+
+exit: 1
+-- go.mod --
+module example.com/root
+
+go 1.25.0
+
+require golang.org/x/sys v0.20.0
+-- go.sum --
+golang.org/x/sys v0.20.0 h1:Od9JTbYCk261bKm4M/mw7AklTlFYIa0bIp9BgSm1S8Y=
+golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+-- service_windows.go --
+package root
+
+// The _windows.go suffix is a build constraint in itself, and this is the
+// module's only file, so package root exists only on Windows. The package it
+// imports exists only on Plan 9, so package root cannot be built anywhere.
+import "golang.org/x/sys/plan9"
+
+func Service() (string, error) { return plan9.Getwd() }
+-- want_diff.txt --
+-- want_report.md --

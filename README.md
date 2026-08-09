@@ -45,6 +45,10 @@ has to do quite a bit more than just `govulncheck`, `go fix`, `go mod tidy`:
 - When an update bumps a dependency to a version that itself has a (different)
 vulnerability, iterate.
 - When there are multiple modules, visit each and remediate.
+- When files or dependencies are built only on some operating systems, scan
+under each of linux, windows and darwin, because GOOS is a build constraint and
+a scan only reaches what the files it admits import. An operating system a
+module does not target is passed over rather than failing it.
 - When there are replace statements, bump their versions too.
 - When go.work files are present, ignore them and treat go.mod files as if they
 were externally imported (go.work files can hide security issues, since

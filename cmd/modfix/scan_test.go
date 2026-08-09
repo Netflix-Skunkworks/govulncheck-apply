@@ -92,3 +92,73 @@ func TestParse(t *testing.T) {
 		t.Errorf("parse() reported differ (-got +want):\n%s", diff)
 	}
 }
+
+// TestExcludedByBuildConstraints covers the one loading failure that is not the
+// module's problem: the packages an operating system it does not target would
+// need. Everything else has to keep failing the module, which is what most of
+// these cases check.
+func TestExcludedByBuildConstraints(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		said string
+		want bool
+	}{
+		{
+			name: "every error is an exclusion, as govulncheck prints them",
+			said: `govulncheck: loading packages: 
+There are errors with the provided package patterns:
+
+-: build constraints exclude all Go files in /go/pkg/mod/golang.org/x/sys@v0.47.0/windows
+-: build constraints exclude all Go files in /go/pkg/mod/golang.org/x/sys@v0.47.0/windows/registry
+
+For details on package patterns, see https://pkg.go.dev/cmd/go#hdr-Package_lists_and_patterns.
+`,
+			want: true,
+		},
+		{
+			name: "an exclusion beside an error of another kind",
+			said: `There are errors with the provided package patterns:
+
+-: build constraints exclude all Go files in /go/pkg/mod/golang.org/x/sys@v0.47.0/windows
+-: no required module provides package example.invalid/nope
+
+For details on package patterns, see https://pkg.go.dev/cmd/go#hdr-Package_lists_and_patterns.
+`,
+			want: false,
+		},
+		{
+			// The go command has a second rendering, which names the import
+			// chain and runs over several lines. Refusing it is deliberate: a
+			// line the parse cannot read has to fail the module rather than be
+			// passed over.
+			name: "an exclusion carrying the import chain that reached it",
+			said: `There are errors with the provided package patterns:
+
+-: package example.com/root
+	imports example.com/root/svc: build constraints exclude all Go files in /go/pkg/mod/example.com/dep@v1.0.0/svc
+
+For details on package patterns, see https://pkg.go.dev/cmd/go#hdr-Package_lists_and_patterns.
+`,
+			want: false,
+		},
+		{
+			name: "a failure that names no error at all",
+			said: "govulncheck: no packages matched the provided patterns\n",
+			want: false,
+		},
+		{
+			name: "an error section holding no error",
+			said: `There are errors with the provided package patterns:
+
+For details on package patterns, see https://pkg.go.dev/cmd/go#hdr-Package_lists_and_patterns.
+`,
+			want: false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := excludedByBuildConstraints(tt.said); got != tt.want {
+				t.Errorf("excludedByBuildConstraints(%q) = %v, want %v", tt.said, got, tt.want)
+			}
+		})
+	}
+}
