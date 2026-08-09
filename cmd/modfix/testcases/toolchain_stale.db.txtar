@@ -1,6 +1,6 @@
-# A minimal govulncheck DB reporting only GO-2024-2687 (net/http HTTP/2
-# CONTINUATION flood, fixed in go1.21.9), recorded against stdlib. The test sets
-# GOTOOLCHAIN=go1.21.0 so govulncheck analyzes the go1.21.0 standard library.
+# A minimal vulnerability database reporting only GO-2024-2687 (net/http HTTP/2
+# CONTINUATION flood, fixed in go1.21.9), recorded against stdlib, the module
+# path standard-library advisories are held under.
 -- index/db.json --
 {"modified":"2026-07-22T00:00:00Z"}
 -- index/modules.json --

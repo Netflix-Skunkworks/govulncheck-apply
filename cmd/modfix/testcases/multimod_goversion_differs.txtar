@@ -1,0 +1,64 @@
+# Two modules on different go directives, each answered at its own.
+#
+# example.com/foo at the root declares go 1.21.0 and example.com/bar under sub/
+# declares go 1.22.0. Both call net/http. The database holds two standard-library
+# advisories over different ranges: GO-TEST-9001 below go1.21.9, and GO-TEST-9002
+# from go1.22.0 up to go1.22.5.
+#
+# So the two modules are affected by one advisory each, and move to different
+# versions: the root to 1.21.9 and sub/ to 1.22.5. Neither is affected by the
+# other's advisory, which is what makes the pair worth scanning separately.
+#
+# Reading the standard library at the toolchain running the scan cannot produce
+# this: one toolchain answers both modules the same way, and whatever Go is
+# installed is past both fixes, so nothing would be reported at all.
+-- go.mod --
+module example.com/foo
+
+go 1.21.0
+-- main.go --
+package main
+
+import "net/http"
+
+func main() { http.Get("http://example.com/") }
+-- sub/go.mod --
+module example.com/bar
+
+go 1.22.0
+-- sub/sub.go --
+package sub
+
+import "net/http"
+
+// Get is the call GO-TEST-9002 is against.
+func Get() { http.Get("http://example.com/") }
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index 9b981c3..d7e9510 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,3 +1,3 @@
+ module example.com/foo
+ 
+-go 1.21.0
++go 1.21.9
+diff --git a/sub/go.mod b/sub/go.mod
+index 1de0b11..50e9640 100644
+--- a/sub/go.mod
++++ b/sub/go.mod
+@@ -1,3 +1,3 @@
+ module example.com/bar
+ 
+-go 1.22.0
++go 1.22.5
+-- want_report.md --
+govulncheck found 2 vulnerabilities; this PR fixes 2:
+
+**[GO-TEST-9001](https://pkg.go.dev/vuln/GO-TEST-9001)**: Flood of requests in net/http
+
+    net/http go1.21.0 -> go1.21.9
+
+**[GO-TEST-9002](https://pkg.go.dev/vuln/GO-TEST-9002)**: Mishandled redirect in net/http
+
+    net/http go1.22.0 -> go1.22.5

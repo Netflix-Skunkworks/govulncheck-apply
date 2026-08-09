@@ -10,8 +10,9 @@
 # leaving its go directive below the modules it uses, and every workspace-mode
 # command then fails with "module . listed in go.work file requires go >= 1.21.9".
 # The `go work use` run afterwards raises go.work to match.
-
-gotoolchain: go1.21.0
+#
+# Each module's standard library is read at that module's own go directive rather
+# than at the toolchain running the scan, so the case names no toolchain of its own.
 -- go.mod --
 module example.com/foo
 

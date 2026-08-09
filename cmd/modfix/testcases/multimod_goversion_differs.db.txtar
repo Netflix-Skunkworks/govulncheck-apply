@@ -1,0 +1,36 @@
+# A minimal vulnerability database holding two standard-library advisories that
+# affect different ranges of Go, so that two modules on different go directives
+# are answered differently: GO-TEST-9001 affects everything below go1.21.9, and
+# GO-TEST-9002 only go1.22.0 up to go1.22.5.
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"stdlib","vulns":[{"id":"GO-TEST-9001","modified":"2026-07-22T00:00:00Z","fixed":"1.21.9"},{"id":"GO-TEST-9002","modified":"2026-07-22T00:00:00Z","fixed":"1.22.5"}]}]
+-- ID/GO-TEST-9001.json --
+{
+  "id": "GO-TEST-9001",
+  "summary": "Flood of requests in net/http",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-TEST-9001"},
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "stdlib", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "1.21.9"}]}],
+      "ecosystem_specific": {"imports": [{"path": "net/http", "symbols": ["Get"]}]}
+    }
+  ]
+}
+-- ID/GO-TEST-9002.json --
+{
+  "id": "GO-TEST-9002",
+  "summary": "Mishandled redirect in net/http",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-TEST-9002"},
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "stdlib", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "1.22.0"}, {"fixed": "1.22.5"}]}],
+      "ecosystem_specific": {"imports": [{"path": "net/http", "symbols": ["Get"]}]}
+    }
+  ]
+}

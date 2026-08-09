@@ -108,6 +108,19 @@ func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 		args = append(args, "-db", db)
 	}
 	args = append(args, "./...")
+	// The standard library is read at the go directive, which is the oldest
+	// toolchain the module can be built with, rather than at the version of the
+	// toolchain running the scan: that one is the image's, and says nothing about
+	// the repository. GOVERSION is where govulncheck takes it from, and the go
+	// command ignores it, so the packages still load under the toolchain that is
+	// installed.
+	mod, err := gomod.Read(dir)
+	if err != nil {
+		return fixes{}, nil, err
+	}
+	if mod.Go == nil {
+		fmt.Fprintf(os.Stderr, "No go directive in %q, so its standard library is read at the toolchain running the scan.\n", filepath.ToSlash(dir))
+	}
 	// The streams are read as one. Keeping the highest fix reported for a module
 	// is what parse already does across findings, and it makes no difference
 	// which scan a finding came from.
@@ -123,6 +136,9 @@ func scan(dir, govulncheck, db string) (fixes, map[string]vuln, error) {
 		// it needs. govulncheck is not a go subcommand, so GOFLAGS is the only
 		// way to reach it.
 		cmd.Env = append(goEnv(), "GOFLAGS=-mod=mod", "GOOS="+goos)
+		if mod.Go != nil {
+			cmd.Env = append(cmd.Env, "GOVERSION=go"+mod.Go.Version)
+		}
 		var said bytes.Buffer
 		cmd.Stderr = io.MultiWriter(os.Stderr, &said)
 		announce(cmd)

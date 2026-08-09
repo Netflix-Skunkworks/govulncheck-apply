@@ -7,11 +7,9 @@
 # Every module under the working directory is scanned, so both go directives move
 # 1.21.0 -> 1.21.9, each in its own module rather than repository-wide.
 #
-# govulncheck takes the standard library version from the toolchain running the
-# scan, not from the go directive, so the test names go1.21.0; a current toolchain
-# would already be past the fix and report nothing.
-
-gotoolchain: go1.21.0
+# Each module's standard library is read at that module's own go directive rather
+# than at the toolchain running the scan, so the case names no toolchain: whatever
+# Go is installed is already past this fix and would otherwise report nothing.
 -- go.mod --
 module example.com/foo
 

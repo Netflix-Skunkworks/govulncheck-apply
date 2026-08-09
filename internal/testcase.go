@@ -41,10 +41,9 @@ func Directives(comment []byte) (map[string]string, error) {
 }
 
 // Toolchain returns the GOTOOLCHAIN a case runs under. A gotoolchain directive
-// names the toolchain whose standard library govulncheck analyzes, as a floor
-// rather than a pin: a standard-library fix raises a go directive past it, and a
-// repository can hold modules on several go directives, so +auto lets each module
-// upgrade to its own.
+// names one as a floor rather than an exact version, so a module whose go
+// directive is higher still runs under its own. Which standard library a scan
+// reads is settled by the go directive rather than by this.
 func Toolchain(directives map[string]string) string {
 	if gt := directives["gotoolchain"]; gt != "" {
 		return gt + "+auto"
