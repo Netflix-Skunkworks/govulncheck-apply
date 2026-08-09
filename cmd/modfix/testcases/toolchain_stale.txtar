@@ -3,8 +3,9 @@
 #
 # The `go` directive is bumped to 1.21.9, which leaves the toolchain directive
 # below the required Go version, so it is removed.
-
-gotoolchain: go1.21.0
+#
+# The standard library is read at the `go` directive rather than at the toolchain
+# running the scan, so the case names no toolchain of its own.
 -- go.mod --
 module example.com/staletoolchain
 
