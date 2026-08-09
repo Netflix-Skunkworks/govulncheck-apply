@@ -1,0 +1,58 @@
+# A module whose every file is built only on Windows.
+#
+# Under GOOS=linux the module's one directory has no file the build constraints
+# admit, so it holds no package, and `go list ./...` matches nothing and says so
+# without failing. That is the answer the run reads to tell a directory tree
+# with no Go package in it from a module it could not load, so a Windows-only
+# module comes out looking like the former: nothing to scan and nothing to fix.
+#
+# Nothing is wrong with the module. It is a module for another operating system,
+# and it has to be scanned as one, which is what the diff and the report assert:
+# the Windows scan lists the package the other scans could not see and finds
+# GO-2026-5024 in it. A run that scanned under one operating system would leave
+# the repository untouched and report nothing.
+-- go.mod --
+module example.com/root
+
+go 1.25.0
+
+require golang.org/x/sys v0.20.0
+-- go.sum --
+golang.org/x/sys v0.20.0 h1:Od9JTbYCk261bKm4M/mw7AklTlFYIa0bIp9BgSm1S8Y=
+golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+-- service_windows.go --
+package root
+
+// The _windows.go suffix is a build constraint in itself, and this is the
+// module's only file, so under any other operating system package root has
+// nothing to build it from.
+import "golang.org/x/sys/windows"
+
+// Service reaches NewLazySystemDLL, in the package GO-2026-5024 affects.
+func Service() string { return windows.NewLazySystemDLL("kernel32.dll").Name }
+-- want_diff.txt --
+diff --git a/go.mod b/go.mod
+index 11abaad..88abbe9 100644
+--- a/go.mod
++++ b/go.mod
+@@ -2,4 +2,4 @@ module example.com/root
+ 
+ go 1.25.0
+ 
+-require golang.org/x/sys v0.20.0
++require golang.org/x/sys v0.44.0
+diff --git a/go.sum b/go.sum
+index 5d1e088..0e11bfe 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,2 +1,2 @@
+-golang.org/x/sys v0.20.0 h1:Od9JTbYCk261bKm4M/mw7AklTlFYIa0bIp9BgSm1S8Y=
+-golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
++golang.org/x/sys v0.44.0 h1:ildZl3J4uzeKP07r2F++Op7E9B29JRUy+a27EibtBTQ=
++golang.org/x/sys v0.44.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+-- want_report.md --
+govulncheck found 1 vulnerability; this PR fixes 1:
+
+**[GO-2026-5024](https://pkg.go.dev/vuln/GO-2026-5024)**: Integer overflow in NewNTUnicodeString in golang.org/x/sys/windows
+
+    golang.org/x/sys v0.20.0 -> v0.44.0

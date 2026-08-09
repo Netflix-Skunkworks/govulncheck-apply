@@ -13,9 +13,10 @@
 // the License.
 
 // Command modfix runs govulncheck over the modules under the working directory
-// and applies the fixes it reports. Each module is rescanned until a pass
-// leaves its go.mod and go.sum alone, because the version a fix selects can
-// itself be vulnerable.
+// and applies the fixes it reports. Each module is scanned once per operating
+// system, because GOOS is a build constraint and a scan reaches only what the
+// files it admits import. Each is rescanned until a pass leaves its go.mod and
+// go.sum alone, because the version a fix selects can itself be vulnerable.
 //
 //	go install github.com/netflix-skunkworks/govulncheck-apply/cmd/modfix@latest
 //	modfix
