@@ -1,0 +1,40 @@
+# A package whose only file imports "C", imported by another package in the same
+# module.
+#
+# cgo is a build constraint before it is anything about compiling, so with cgo off
+# the file leaves the package, the package is left with no files at all, and the
+# import asking for it cannot be resolved:
+#
+#	-: build constraints exclude all Go files in .../cgopkg
+#
+# The go command turns cgo off by itself wherever it finds no C compiler, which is
+# what an image carrying only Go has, so the run forces cgo on rather than trusting
+# the default. The env directive below is that machine: without it the case would
+# pass wherever a C compiler happens to be installed and assert nothing.
+#
+# Nothing here is vulnerable, so the empty want_diff.txt and want_report.md assert
+# that the run read the module and found nothing. A run that left cgo alone would
+# exit 1 on the unresolvable import instead.
+
+env: CGO_ENABLED=0
+-- go.mod --
+module example.com/root
+
+go 1.25.0
+-- main.go --
+package main
+
+import "example.com/root/cgopkg"
+
+func main() { println(cgopkg.Answer()) }
+-- cgopkg/cgopkg.go --
+package cgopkg
+
+// The bare import is what makes this a cgo file. It needs no C preamble, and
+// nothing compiles it: the constraint alone decides whether the file is part of
+// the package.
+import "C"
+
+func Answer() int { return 42 }
+-- want_diff.txt --
+-- want_report.md --

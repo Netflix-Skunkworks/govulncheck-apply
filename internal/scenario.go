@@ -117,7 +117,12 @@ func Scenarios(t *testing.T) {
 			if db := loadDB(t, path); db != "" {
 				args = append(args, "-db", "file://"+db)
 			}
-			gotReport, gotStderr, gotExit := runCommand(t, repo, []string{"GOTOOLCHAIN=" + Toolchain(d)}, command, args...)
+			caseEnv, err := Env(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			env := append([]string{"GOTOOLCHAIN=" + Toolchain(d)}, caseEnv...)
+			gotReport, gotStderr, gotExit := runCommand(t, repo, env, command, args...)
 			if got, want := strconv.Itoa(gotExit), cmp.Or(d["exit"], "0"); got != want {
 				t.Errorf("%s exited %s, want %s\n%s", filepath.Base(command), got, want, gotStderr)
 			}

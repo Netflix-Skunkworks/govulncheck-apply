@@ -95,15 +95,20 @@ func run() error {
 	if desc := internal.Description(archive.Comment); desc != "" {
 		fmt.Printf("\n%s\n", desc)
 	}
-	// The toolchain comes from the same place the harness gets it, so that the
-	// scenario reproduces under the toolchain the case is tested with.
+	// The toolchain and the environment come from the same place the harness
+	// gets them, so that the scenario reproduces the way it is tested.
+	caseEnv, err := internal.Env(d)
+	if err != nil {
+		return fmt.Errorf("%s.txtar: %v", *testcase, err)
+	}
+	env := append([]string{"GOTOOLCHAIN=" + internal.Toolchain(d)}, caseEnv...)
 	fmt.Printf(`
 Scenario ready at %[1]s
 
   cd %[1]s
-  GOTOOLCHAIN=%[2]s ./modfix -db file://%[3]s
+  %[2]s ./modfix -db file://%[3]s
   ./dockerfilefix
-`, dir, internal.Toolchain(d), db)
+`, dir, strings.Join(env, " "), db)
 	return nil
 }
 

@@ -1,0 +1,8 @@
+# A govulncheck DB reporting nothing. The case is about the scan being able to
+# read a module whose cgo package would otherwise be excluded, so nothing here
+# should be found vulnerable: an empty database keeps a real advisory against the
+# go directive from raising it and failing the run for an unrelated reason.
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[]

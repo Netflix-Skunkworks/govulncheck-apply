@@ -208,8 +208,17 @@ func goCmd(dir string, args ...string) *exec.Cmd {
 	return cmd
 }
 
+// goEnv returns the environment the module edits and the scan run under.
+// GOWORK=off has each module scanned against its own go.mod rather than the
+// version a workspace would select. cgo is forced on because it is a build
+// constraint before it is anything about compiling: with cgo off a file
+// importing "C" leaves the package, taking its other imports with it, so a scan
+// misses whatever only those imports reach. The go command turns cgo off
+// wherever it finds no C compiler, which is what an image carrying only Go has,
+// so its default cannot be relied on. Nothing here compiles, so holding the
+// files in costs nothing.
 func goEnv() []string {
-	return append(os.Environ(), "GOWORK=off")
+	return append(os.Environ(), "GOWORK=off", "CGO_ENABLED=1")
 }
 
 // commandLine names cmd, dropping the program's directory so that the
