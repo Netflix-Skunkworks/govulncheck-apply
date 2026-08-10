@@ -180,20 +180,6 @@ func goWorkUse() error {
 	return run(exec.Command("go", "work", "use"))
 }
 
-// writeGoWorkSum writes go.work.sum, which carries the hashes a workspace needs
-// beyond the ones its modules' own go.sum files hold, and does nothing outside
-// a workspace. Raising a requirement can add a hash, and the tidy each module
-// gets does not write it: that maintains the go.sum of the module it runs in.
-func writeGoWorkSum() error {
-	if _, err := os.Stat("go.work"); errors.Is(err, fs.ErrNotExist) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	// Not goCmd, which turns the workspace off.
-	return run(exec.Command("go", "mod", "download"))
-}
-
 // bumpReplacedModules raises the version of each replacement that points at the
 // same module path.
 func bumpReplacedModules(dir string, fixed map[string]string) error {

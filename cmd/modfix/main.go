@@ -98,11 +98,6 @@ func remediate() error {
 		all = append(all, vulns...)
 	}
 
-	// Last: a requirement raised in the last module leaves go.work.sum as stale
-	// as one raised in the first.
-	if err := writeGoWorkSum(); err != nil {
-		return err
-	}
 	return report(os.Stdout, all)
 }
 
