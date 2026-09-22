@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -33,15 +34,19 @@ type vuln struct {
 	selected      string // the version the run left selected, empty if unchanged
 	fixedIn       string // the version that fixes it, empty if none is published
 	stillReported bool   // whether the last pass reported it again
+	rejected      bool   // whether the fix was tried and rolled back because it broke `go mod tidy`
 }
 
-// The two ways a vulnerability can be left behind: the database publishes no
-// fixed version, or raising the requirement to it did not shake the vulnerable
+// The three ways a vulnerability can be left behind:
+// 1. the database publishes no fixed version
+// 2. raising the requirement to it did not shake the vulnerable
 // version out of the build list, which usually means a replace directive is
-// holding it there.
+// holding it there
+// 3. the fix breaks `go mod tidy` and needs manual attention.
 const (
-	noFix       = "no fix published"
-	fixNotTaken = "fix did not take"
+	noFix         = "no fix published"
+	fixNotTaken   = "fix did not take"
+	fixBreaksTidy = "upgrading breaks `go mod tidy`, needs manual attention"
 )
 
 // report writes every advisory a run found as markdown.
@@ -49,8 +54,19 @@ func report(w io.Writer, all []vuln) error {
 	if len(all) == 0 {
 		return nil
 	}
-	entries := make([]string, 0, len(all))
-	for _, v := range all {
+
+	ordered := slices.Clone(all)
+	slices.SortStableFunc(ordered, func(a, b vuln) int {
+		if a.rejected == b.rejected {
+			return 0
+		} else if a.rejected {
+			return -1
+		}
+
+		return 1
+	})
+	entries := make([]string, 0, len(ordered))
+	for _, v := range ordered {
 		entries = append(entries, entry(v))
 	}
 	_, err := fmt.Fprintf(w, "%s\n\n%s", heading(all), strings.Join(entries, "\n"))
@@ -60,20 +76,26 @@ func report(w io.Writer, all []vuln) error {
 // heading counts what the run found against what it left, so that a reader sees
 // at a glance whether anything is outstanding.
 func heading(all []vuln) string {
-	fixed, unfixable, stuck := 0, 0, 0
+	fixed, unfixable, attention, stuck := 0, 0, 0, 0
 	for _, v := range all {
 		switch {
 		case !v.stillReported:
 			fixed++
+		case v.rejected:
+			attention++
 		case v.fixedIn == "":
 			unfixable++
 		default:
 			stuck++
 		}
 	}
+
 	said := []string{fmt.Sprintf("this PR fixes %d", fixed)}
 	if unfixable > 0 {
 		said = append(said, fmt.Sprintf("%d %s not have a fix ready yet", unfixable, agree(unfixable, "does", "do")))
+	}
+	if attention > 0 {
+		said = append(said, fmt.Sprintf("%d %s manual attention", attention, agree(attention, "needs", "need")))
 	}
 	if stuck > 0 {
 		said = append(said, fmt.Sprintf("%d unable to fix", stuck))
@@ -120,7 +142,10 @@ func versions(v vuln) string {
 		line = fmt.Sprintf("%s %s, %s", module, found, noFix)
 	} else {
 		line = fmt.Sprintf("%s %s -> %s", module, found, toolchainName(v.module, v.fixedIn))
-		if v.stillReported {
+		switch {
+		case v.rejected:
+			noted = append(noted, fixBreaksTidy)
+		case v.stillReported:
 			noted = append(noted, fixNotTaken)
 		}
 	}

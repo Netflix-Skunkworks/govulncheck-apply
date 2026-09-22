@@ -47,6 +47,8 @@ const maxPasses = 5
 
 var dbURL = flag.String("db", "", "vulnerability database `url` for govulncheck to scan against, e.g. file:///tmp/db. Defaults to govulncheck's own default, https://vuln.go.dev")
 
+var bestEffort = flag.Bool("best-effort", false, "keep the fixes that resolved and exit 0 when others had to be rolled back.")
+
 func main() {
 	flag.Parse()
 	if err := remediate(); err != nil {
@@ -98,7 +100,23 @@ func remediate() error {
 		all = append(all, vulns...)
 	}
 
-	return report(os.Stdout, all)
+	if err := report(os.Stdout, all); err != nil {
+		return err
+	}
+
+	if !anyRejected(all) {
+		return nil
+	}
+
+	if !*bestEffort {
+		return errors.New("some fixes broke `go mod tidy` and were rolled back; see the report above")
+	}
+
+	return nil
+}
+
+func anyRejected(all []vuln) bool {
+	return slices.ContainsFunc(all, func(v vuln) bool { return v.rejected })
 }
 
 // remediateModule scans the module in dir with govulncheck and applies the
@@ -113,6 +131,7 @@ func remediateModule(dir, govulncheck, db string) ([]vuln, error) {
 	// every advisory any pass reported, described as the pass that first saw it
 	// did.
 	seen := map[string]vuln{}
+	rejected := map[string]string{}
 	before, err := modFiles(dir)
 	if err != nil {
 		return nil, err
@@ -127,9 +146,11 @@ func remediateModule(dir, govulncheck, db string) ([]vuln, error) {
 				seen[osv] = v
 			}
 		}
-		if err := apply(dir, fix); err != nil {
+		gaveUp, err := apply(dir, fix, rejected)
+		if err != nil {
 			return nil, err
 		}
+		maps.Copy(rejected, gaveUp)
 		after, err := modFiles(dir)
 		if err != nil {
 			return nil, err
@@ -139,7 +160,7 @@ func remediateModule(dir, govulncheck, db string) ([]vuln, error) {
 			if err != nil {
 				return nil, err
 			}
-			return classify(seen, reported, selected), nil
+			return classify(seen, reported, selected, rejected), nil
 		}
 		before = after
 	}
@@ -150,12 +171,13 @@ func remediateModule(dir, govulncheck, db string) ([]vuln, error) {
 // marked with whether the last pass reported it again and with the version of
 // the vulnerable module the run settled on. That, with the version that fixes
 // it, is everything the report needs to say what became of it.
-func classify(seen, remaining map[string]vuln, selected map[string]string) []vuln {
+func classify(seen, remaining map[string]vuln, selected, rejected map[string]string) []vuln {
 	var out []vuln
 	for _, osv := range slices.Sorted(maps.Keys(seen)) {
 		v := seen[osv]
 		_, v.stillReported = remaining[osv]
 		v.selected = selected[v.module]
+		_, v.rejected = rejected[v.module]
 		out = append(out, v)
 	}
 	return out

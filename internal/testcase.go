@@ -67,6 +67,13 @@ func Env(directives map[string]string) ([]string, error) {
 	return pairs, nil
 }
 
+// Args returns the space-separated flags an args directive passes to the
+// command, and none for a case without one. A case sets it where what it
+// asserts is how the command behaves under a flag rather than by default.
+func Args(directives map[string]string) []string {
+	return strings.Fields(directives["args"])
+}
+
 // Description returns the case's `#` comments with the markers stripped, for the
 // repro command to print.
 func Description(comment []byte) string {

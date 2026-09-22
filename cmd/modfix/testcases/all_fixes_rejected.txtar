@@ -1,0 +1,38 @@
+# Every fix breaks the build, so every one is rolled back and the run applies
+# nothing. The empty want_diff.txt asserts the rollback restored go.mod and
+# go.sum exactly, leaving no commit for a pull request to carry.
+#
+# So the run exits non-zero even though it handled the failure cleanly: a fix
+# that had to be rolled back fails the run unless -best-effort says otherwise,
+# and the non-zero exit is what has NDR mail the repository's owners.
+
+exit: 1
+-- go.mod --
+module example.com/allrejected
+
+go 1.25.0
+
+require github.com/dgrijalva/jwt-go v3.2.0+incompatible
+-- main.go --
+package main
+
+import (
+	"fmt"
+
+	"github.com/dgrijalva/jwt-go"
+)
+
+func main() {
+	claims := jwt.MapClaims{"aud": "example.com"}
+	fmt.Println(claims.VerifyAudience("example.com", true))
+}
+-- go.sum --
+github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumCAMpl/TFQ4/5kLM=
+github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
+-- want_diff.txt --
+-- want_report.md --
+govulncheck found 1 vulnerability; this PR fixes 0, 1 needs manual attention:
+
+**[GO-2020-0017](https://pkg.go.dev/vuln/GO-2020-0017)**: Authentication bypass in github.com/dgrijalva/jwt-go
+
+    github.com/dgrijalva/jwt-go v3.2.0+incompatible -> v3.99.0+incompatible (upgrading breaks `go mod tidy`, needs manual attention)

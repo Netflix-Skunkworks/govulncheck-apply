@@ -113,7 +113,7 @@ func Scenarios(t *testing.T) {
 			}
 			gitInit(t, repo)
 
-			var args []string
+			args := Args(d)
 			if db := loadDB(t, path); db != "" {
 				args = append(args, "-db", "file://"+db)
 			}

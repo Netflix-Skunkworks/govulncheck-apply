@@ -38,10 +38,111 @@ type fixes struct {
 	goVersion string            // fixed version for stdlib vulns, e.g. "v1.21.9"
 }
 
-func apply(dir string, fix fixes) error {
-	if len(fix.modules) == 0 && fix.goVersion == "" {
+// applies the fixes one at a time, undoing each that breaks the build.
+func apply(dir string, fix fixes, skip map[string]string) (map[string]string, error) {
+	fix.modules = without(fix.modules, skip)
+	// check whether the go version needs to be updated
+	if _, ok := skip[stdlib]; !ok && fix.goVersion != "" {
+		fix.modules[stdlib] = fix.goVersion
+	}
+
+	if len(fix.modules) == 0 {
+		return nil, nil
+	}
+
+	paths := slices.Sorted(maps.Keys(fix.modules))
+	// The go directive needs to go first as a module's fix often needs a newer Go.
+	if i := slices.Index(paths, stdlib); i > 0 {
+		paths = slices.Insert(slices.Delete(paths, i, i+1), 0, stdlib)
+	}
+
+	rejected := map[string]string{}
+	for _, path := range paths {
+		upgrade := fixes{modules: map[string]string{path: fix.modules[path]}}
+		if path == stdlib {
+			upgrade = fixes{goVersion: fix.modules[path]}
+		}
+
+		before, err := takeSnapshot(dir)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := edit(dir, upgrade); err != nil {
+			return nil, err
+		}
+
+		if tidy(dir) == nil {
+			continue
+		}
+
+		if err := before.restore(dir); err != nil {
+			return nil, err
+		}
+
+		rejected[path] = fix.modules[path]
+	}
+
+	// nothing applied, so return before vendoring
+	if len(rejected) == len(paths) {
+		return rejected, nil
+	}
+
+	if err := goModVendor(dir); err != nil {
+		return rejected, err
+	}
+
+	return rejected, nil
+}
+
+func without(fixed, skip map[string]string) map[string]string {
+	kept := map[string]string{}
+	for path, version := range fixed {
+		if _, ok := skip[path]; !ok {
+			kept[path] = version
+		}
+	}
+
+	return kept
+}
+
+type modSnapshot struct {
+	goMod []byte
+	goSum []byte // nil where the module has no dependencies, so no go.sum
+}
+
+func takeSnapshot(dir string) (modSnapshot, error) {
+	goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+	if err != nil {
+		return modSnapshot{}, err
+	}
+
+	goSum, err := os.ReadFile(filepath.Join(dir, "go.sum"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return modSnapshot{}, err
+	}
+
+	return modSnapshot{goMod: goMod, goSum: goSum}, nil
+}
+
+func (s *modSnapshot) restore(dir string) error {
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), s.goMod, 0o644); err != nil {
+		return err
+	}
+
+	sum := filepath.Join(dir, "go.sum")
+	if s.goSum == nil {
+		if err := os.Remove(sum); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+
 		return nil
 	}
+
+	return os.WriteFile(sum, s.goSum, 0o644)
+}
+
+func edit(dir string, fix fixes) error {
 	if fix.goVersion != "" {
 		// govulncheck reports stdlib fixes as e.g. "v1.21.9"; the go directive
 		// wants "1.21.9".
@@ -52,18 +153,16 @@ func apply(dir string, fix fixes) error {
 			return err
 		}
 	}
-	if len(fix.modules) > 0 {
-		if err := requireModules(dir, fix.modules); err != nil {
-			return err
-		}
-		if err := bumpReplacedModules(dir, fix.modules); err != nil {
-			return err
-		}
+
+	if len(fix.modules) == 0 {
+		return nil
 	}
-	if err := tidy(dir); err != nil {
+
+	if err := requireModules(dir, fix.modules); err != nil {
 		return err
 	}
-	return goModVendor(dir)
+
+	return bumpReplacedModules(dir, fix.modules)
 }
 
 // tidy runs `go mod tidy`. Where the first run fails only because a module

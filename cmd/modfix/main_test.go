@@ -68,7 +68,7 @@ func TestClassify(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classify(tt.seen, tt.remaining, tt.selected)
+			got := classify(tt.seen, tt.remaining, tt.selected, nil)
 			if diff := cmp.Diff(got, tt.want, unexported); diff != "" {
 				t.Errorf("classify(%+v, %+v, %v) differs (-got +want):\n%s", tt.seen, tt.remaining, tt.selected, diff)
 			}

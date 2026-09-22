@@ -102,13 +102,14 @@ func run() error {
 		return fmt.Errorf("%s.txtar: %v", *testcase, err)
 	}
 	env := append([]string{"GOTOOLCHAIN=" + internal.Toolchain(d)}, caseEnv...)
+	args := strings.Join(append(internal.Args(d), "-db file://"+db), " ")
 	fmt.Printf(`
 Scenario ready at %[1]s
 
   cd %[1]s
-  %[2]s ./modfix -db file://%[3]s
+  %[2]s ./modfix %[3]s
   ./dockerfilefix
-`, dir, strings.Join(env, " "), db)
+`, dir, strings.Join(env, " "), args)
 	return nil
 }
 

@@ -1,0 +1,36 @@
+# Two advisories. GO-2021-0113 fixes golang.org/x/text at v0.3.7, which resolves.
+# GO-2020-0017 claims github.com/dgrijalva/jwt-go is fixed in v3.99.0, which was
+# never published, so `go mod edit` accepts the requirement and `go mod tidy`
+# cannot resolve it.
+-- index/db.json --
+{"modified":"2026-07-22T00:00:00Z"}
+-- index/modules.json --
+[{"path":"golang.org/x/text","vulns":[{"id":"GO-2021-0113","modified":"2026-07-22T00:00:00Z","fixed":"0.3.7"}]},{"path":"github.com/dgrijalva/jwt-go","vulns":[{"id":"GO-2020-0017","modified":"2026-07-22T00:00:00Z","fixed":"3.99.0+incompatible"}]}]
+-- ID/GO-2021-0113.json --
+{
+  "id": "GO-2021-0113",
+  "summary": "Denial of service in golang.org/x/text",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2021-0113"},
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "golang.org/x/text", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "0.3.7"}]}],
+      "ecosystem_specific": {"imports": [{"path": "golang.org/x/text/language", "symbols": ["Parse"]}]}
+    }
+  ]
+}
+-- ID/GO-2020-0017.json --
+{
+  "id": "GO-2020-0017",
+  "summary": "Authentication bypass in github.com/dgrijalva/jwt-go",
+  "database_specific": {"url": "https://pkg.go.dev/vuln/GO-2020-0017"},
+  "modified": "2026-07-22T00:00:00Z",
+  "affected": [
+    {
+      "package": {"name": "github.com/dgrijalva/jwt-go", "ecosystem": "Go"},
+      "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "3.99.0+incompatible"}]}],
+      "ecosystem_specific": {"imports": [{"path": "github.com/dgrijalva/jwt-go", "symbols": ["MapClaims.VerifyAudience"]}]}
+    }
+  ]
+}
