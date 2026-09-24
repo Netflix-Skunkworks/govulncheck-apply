@@ -31,16 +31,21 @@ import (
 )
 
 // These name the txtar entries holding a case's expectations. Every case has a
-// want_diff.txt; want_report.md is optional.
+// want_diff.txt; want_report.md and want_metrics.json are optional.
 const (
-	wantDiffFile   = "want_diff.txt"
-	wantReportFile = "want_report.md"
+	wantDiffFile    = "want_diff.txt"
+	wantReportFile  = "want_report.md"
+	wantMetricsFile = "want_metrics.json"
 )
 
 // Scenarios builds the command in the calling test's own directory and runs it
 // over every testcases/*.txtar beside it, asserting the `git diff` each archive's
 // want_diff.txt says the run should produce, and what a want_report.md says it
 // should print.
+//
+// A case carrying a want_metrics.json is run with -metrics, and the file the run
+// writes is asserted against it. It is written outside the repository, so that
+// asserting it does not change the diff the case asserts.
 //
 // A scenario with a sibling foo.db.txtar is scanned against that vulnerability
 // database rather than the live vuln.go.dev, passed as -db, so findings are
@@ -95,6 +100,7 @@ func Scenarios(t *testing.T) {
 				t.Fatalf("%s has no %s", path, wantDiffFile)
 			}
 			wantReport, hasReport := take(archive, wantReportFile)
+			wantMetrics, hasMetrics := take(archive, wantMetricsFile)
 			// An empty want_diff.txt is how a case says the run must change
 			// nothing, which on its own would also pass if the run did nothing at
 			// all. Such a case has to assert the report too.
@@ -117,6 +123,10 @@ func Scenarios(t *testing.T) {
 			if db := loadDB(t, path); db != "" {
 				args = append(args, "-db", "file://"+db)
 			}
+			metrics := filepath.Join(t.TempDir(), "metrics.json")
+			if hasMetrics {
+				args = append(args, "-metrics", metrics)
+			}
 			caseEnv, err := Env(d)
 			if err != nil {
 				t.Fatal(err)
@@ -134,6 +144,15 @@ func Scenarios(t *testing.T) {
 			}
 			if hasReport && gotReport != wantReport {
 				t.Errorf("report =\n%s\nwant:\n%s", gotReport, wantReport)
+			}
+			if hasMetrics {
+				gotMetrics, err := os.ReadFile(metrics)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(gotMetrics) != wantMetrics {
+					t.Errorf("metrics =\n%s\nwant:\n%s", gotMetrics, wantMetrics)
+				}
 			}
 		})
 	}

@@ -61,3 +61,5 @@ govulncheck found 2 vulnerabilities; this PR fixes 2:
 **[GO-TEST-0002](https://pkg.go.dev/vuln/GO-TEST-0002)**: Denial of service in golang.org/x/text
 
     golang.org/x/text v0.3.7 -> v0.3.8
+-- want_metrics.json --
+{"tool":"govulncheck-apply","vulnerabilitiesFound":2,"vulnerabilitiesFixed":2,"vulnerabilitiesUnfixable":0,"vulnerabilitiesStuck":0}

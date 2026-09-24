@@ -139,3 +139,56 @@ func TestOneLine(t *testing.T) {
 		}
 	}
 }
+
+func TestCalculateMetrics(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		vulns []vuln
+		want  toolExecutionMetrics
+	}{
+		{
+			name: "a run that found nothing counts zero of each",
+			want: toolExecutionMetrics{Tool: "govulncheck-apply"},
+		},
+		{
+			name:  "an advisory the last pass no longer reported is fixed",
+			vulns: []vuln{{osv: "GO-1", fixedIn: "v1.1.0"}},
+			want: toolExecutionMetrics{
+				Tool: "govulncheck-apply", VulnerabilitiesFound: 1, VulnerabilitiesFixed: 1,
+			},
+		},
+		{
+			name:  "an advisory still reported with no published fix is unfixable",
+			vulns: []vuln{{osv: "GO-1", stillReported: true}},
+			want: toolExecutionMetrics{
+				Tool: "govulncheck-apply", VulnerabilitiesFound: 1, VulnerabilitiesUnfixable: 1,
+			},
+		},
+		{
+			name:  "an advisory still reported despite a published fix is stuck",
+			vulns: []vuln{{osv: "GO-1", fixedIn: "v1.1.0", stillReported: true}},
+			want: toolExecutionMetrics{
+				Tool: "govulncheck-apply", VulnerabilitiesFound: 1, VulnerabilitiesStuck: 1,
+			},
+		},
+		{
+			name: "every outcome at once",
+			vulns: []vuln{
+				{osv: "GO-1", fixedIn: "v1.1.0"},
+				{osv: "GO-2", fixedIn: "v2.1.0"},
+				{osv: "GO-3", stillReported: true},
+				{osv: "GO-4", fixedIn: "v4.1.0", stillReported: true},
+			},
+			want: toolExecutionMetrics{
+				Tool: "govulncheck-apply", VulnerabilitiesFound: 4, VulnerabilitiesFixed: 2,
+				VulnerabilitiesUnfixable: 1, VulnerabilitiesStuck: 1,
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(tt.want, calculateMetrics(tt.vulns)); diff != "" {
+				t.Errorf("calculateMetrics() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
