@@ -62,9 +62,6 @@ func TestReport(t *testing.T) {
 				{osv: "GO-2", module: "example.com/b", found: "v1.0.0", fixedIn: "v1.1.0", stillReported: true},
 			},
 			want: "govulncheck found 2 vulnerabilities; this PR fixes 0, 1 does not have a fix ready yet, 1 unable to fix:\n\n" +
-				"**GO-1**\n\n" +
-				"    example.com/a v1.0.0, no fix published\n" +
-				"\n" +
 				"**GO-2**\n\n" +
 				"    example.com/b v1.0.0 -> v1.1.0 (fix did not take)\n",
 		},
@@ -81,16 +78,12 @@ func TestReport(t *testing.T) {
 				"    golang.org/x/crypto v0.48.0 -> v0.52.0 (selected v0.53.0)\n",
 		},
 		{
-			// Another advisory's fix can raise a module this one has no fix for, so
-			// the version the run left is named here too.
-			name: "a module raised past an advisory with no fix",
+			name: "an advisory with no published fix is counted, not listed",
 			vulns: []vuln{{
 				osv: "GO-4", module: "golang.org/x/net", found: "v0.20.0",
 				selected: "v0.38.0", stillReported: true,
 			}},
-			want: "govulncheck found 1 vulnerability; this PR fixes 0, 1 does not have a fix ready yet:\n\n" +
-				"**GO-4**\n\n" +
-				"    golang.org/x/net v0.20.0, no fix published (selected v0.38.0)\n",
+			want: "govulncheck found 1 vulnerability; this PR fixes 0, 1 does not have a fix ready yet:\n",
 		},
 		{
 			name: "both notes on one advisory",
