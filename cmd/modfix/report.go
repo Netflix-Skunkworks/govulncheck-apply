@@ -73,11 +73,23 @@ func report(w io.Writer, all []vuln) error {
 	if len(all) == 0 {
 		return nil
 	}
+
 	entries := make([]string, 0, len(all))
 	for _, v := range all {
+		if v.fixedIn == "" && v.stillReported {
+			continue
+		}
+
 		entries = append(entries, entry(v))
 	}
-	_, err := fmt.Fprintf(w, "%s\n\n%s", heading(all), strings.Join(entries, "\n"))
+
+	h := heading(all)
+	if len(entries) == 0 {
+		_, err := fmt.Fprintln(w, h)
+		return err
+	}
+
+	_, err := fmt.Fprintf(w, "%s\n\n%s", h, strings.Join(entries, "\n"))
 	return err
 }
 
